@@ -15,6 +15,7 @@ const CONFIG = {
 };
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <style>
 /* Notion-like: white page, warm-black text, hairline rules, light weights. */
 :root{
@@ -166,6 +167,17 @@ button.trow:hover{background:var(--hover)}
 .vlist label{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line)}
 .vlist small{color:var(--faint);margin-left:auto}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));background:#2f2f2f;color:#fff;padding:10px 14px;border-radius:6px;font-size:.9rem;max-width:calc(100% - 40px);z-index:9;box-shadow:0 4px 18px rgba(0,0,0,.15)}
+.qr{width:30px;height:30px;padding:3px;border-radius:6px;opacity:.55;display:grid;place-items:center}
+.qr:hover{opacity:1;background:var(--hover)}
+.qr svg,.qrbig svg{display:block;width:100%;height:100%}
+.overlay{position:fixed;inset:0;background:rgba(15,15,15,.45);display:grid;place-items:center;z-index:20;padding:20px}
+.qrcard{background:#fff;border-radius:10px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:12px;max-width:340px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.2);text-align:center}
+.qrbig{width:min(260px,70vw);height:min(260px,70vw)}
+.qrcard .url{font-size:.85rem;color:var(--muted);word-break:break-all}
+.callout .btns{display:flex;gap:8px;flex-wrap:wrap}
+.ocr{width:100%;font-size:.88rem;color:var(--muted)}
+.ocr .bar2{margin-top:6px}
+.ocr .bar2 i{background:var(--blue)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .mode{font-size:.8rem;color:var(--faint);padding:24px 0 100px}
 @media (prefers-reduced-motion: reduce){.caret,.recdot::before{animation:none}}
@@ -189,6 +201,7 @@ button.trow:hover{background:var(--hover)}
 <!-- HOME -->
 <main id="v-home" class="view" hidden>
   <div class="bar">
+    <button class="qr" id="qrBtn" type="button" aria-label="Visa QR-kod för att öppna appen på mobilen"></button>
     <span class="grow"></span>
     <button class="ghost" id="toStats" type="button">Statistik</button>
     <button class="ghost" id="toSettings" type="button" aria-label="Inställningar"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
@@ -210,9 +223,15 @@ button.trow:hover{background:var(--hover)}
   <div class="bar">
     <button class="ghost dark" id="editBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Veckans ord</button>
     <span class="grow"></span>
+    <span class="crumb" id="editMode"></span>
     <button class="ghost dark" id="editDone" type="button">Klar</button>
   </div>
-  <input class="titleIn" id="titleIn" maxlength="40" placeholder="Namnlös vecka" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Veckans namn">
+  <input class="titleIn" id="titleIn" maxlength="40" placeholder="Vecka x" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Veckans namn">
+  <div class="callout" id="photoCallout">
+    <p>Har du fått en lapp från skolan? Fota den så läser appen in orden.</p>
+    <button class="btn" id="photoBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Fota eller välj bild</button>
+    <div class="ocr" id="ocrStatus" hidden><span id="ocrText"></span><div class="bar2"><i id="ocrBar" style="width:0"></i></div></div>
+  </div>
   <div class="callout">
     <p>Spela in alla ord med din röst. Orden visas ett i taget, säg ordet och tryck <b>Nästa</b>.</p>
     <button class="btn primary" id="recAll" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Spela in alla ord</button>
@@ -222,6 +241,7 @@ button.trow:hover{background:var(--hover)}
   <button class="addrow" id="addRow" type="button">+ Nytt ord</button>
   <button class="ghost danger" id="delWeek" type="button" style="align-self:flex-start;margin:28px 0 60px;padding-left:4px" hidden>Ta bort veckan</button>
   <input type="file" id="imgFile" accept="image/*" class="sr" tabindex="-1" aria-hidden="true">
+  <input type="file" id="sheetFile" accept="image/*" class="sr" tabindex="-1" aria-hidden="true">
 </main>
 
 <!-- RECORDER -->
@@ -284,6 +304,15 @@ button.trow:hover{background:var(--hover)}
   <div style="margin:12px 0 60px"><button class="btn" id="logout" type="button">Logga ut</button></div>
 </main>
 
+<div class="overlay" id="qrOverlay" hidden>
+  <div class="qrcard" role="dialog" aria-label="QR-kod">
+    <div class="qrbig" id="qrBig"></div>
+    <b style="font-weight:500">Öppna på mobilen</b>
+    <span class="url" id="qrUrl"></span>
+    <span class="sub">Rikta mobilens kamera mot koden.</span>
+    <button class="btn" id="qrClose" type="button">Stäng</button>
+  </div>
+</div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -353,7 +382,7 @@ const SEED = { name: "Vecka 2", words: [["bygd", "🏘️"], ["byggd", "🧱"], 
 /* ===================== boot & auth ===================== */
 let signUpMode = false;
 async function boot() {
-  if (CONFIG.url && CONFIG.key && window.supabase) {
+  if (CONFIG.url && CONFIG.key && window.supabase && !new URLSearchParams(location.search).has("test")) {
     sb = window.supabase.createClient(CONFIG.url, CONFIG.key, { auth: { persistSession: true, autoRefreshToken: true } });
     const { data } = await sb.auth.getSession();
     if (!data.session) { show("auth"); return; }
@@ -507,10 +536,13 @@ async function openEdit(weekId) {
   draft = editWeek ? wordsOf(editWeek.id).map(w => ({ ...w })) : [];
   removed = []; popFor = null; delArmed = false;
   if (!draft.length) draft.push(blank());
-  $("titleIn").value = editWeek ? editWeek.name : "Vecka " + (S.weeks.length + 1);
+  $("titleIn").value = editWeek ? editWeek.name : "";
+  $("editMode").textContent = editWeek ? "Ändrar " + editWeek.name : "Ny vecka";
+  $("ocrStatus").hidden = true;
   $("delWeek").hidden = !editWeek; $("delWeek").textContent = "Ta bort veckan";
   show("edit"); renderRows();
   if (editWeek) { await loadMedia(draft.map(w => w.id)); renderRows(); }
+  else $("titleIn").focus();
 }
 const blank = () => ({ id: uuid(), word: "", emoji: "", _new: true });
 function renderRows() {
@@ -591,7 +623,9 @@ async function saveDraft() {
   const seen = new Set();
   const keep = draft.filter(w => { const k = norm(w.word); if (!k || seen.has(k)) { if (!w._new) removed.push(w.id); return false; } seen.add(k); return true; });
   if (!keep.length) { toast("Skriv minst ett ord."); return false; }
-  const name = $("titleIn").value.trim() || "Vecka " + (S.weeks.length + (editWeek ? 0 : 1));
+  const name = $("titleIn").value.trim() || nextFreeName();
+  const clash = S.weeks.find(w => w !== editWeek && norm(w.name) === norm(name));
+  if (clash) { toast(`Det finns redan en vecka som heter ”${clash.name}”. Välj ett annat namn.`); $("titleIn").focus(); return false; }
   const week = editWeek || { id: uuid(), position: S.weeks.length };
   try {
     await api.upsert("weeks", { id: week.id, name, position: week.position ?? 0 });
@@ -602,13 +636,20 @@ async function saveDraft() {
     if (removed.length) { await api.remove("media", removed, "word_id"); await api.remove("words", removed); }
     week.name = name;
     if (!editWeek) { S.weeks.push(week); editWeek = week; $("delWeek").hidden = false; }
+    $("titleIn").value = name; $("editMode").textContent = "Ändrar " + name;
     S.words = S.words.filter(w => w.week_id !== week.id).concat(rows);
     draft = rows.map(r => ({ ...r })); removed = [];
     return true;
   } catch (e) { console.error(e); toast("Kunde inte spara. Kontrollera internetanslutningen."); return false; }
 }
 $("editDone").onclick = async () => { if (await saveDraft()) openWeek(editWeek.id); };
-$("editBack").onclick = async () => { if (draft.some(w => w.word.trim())) await saveDraft(); renderHome(); };
+$("editBack").onclick = async () => { if (draft.some(w => w.word.trim()) && !(await saveDraft())) return; renderHome(); };
+function nextFreeName() {
+  const taken = new Set(S.weeks.map(w => norm(w.name)));
+  let n = 1; for (const w of S.weeks) { const m = w.name.match(/(\d+)/); if (m) n = Math.max(n, +m[1] + 1); }
+  while (taken.has(norm("Vecka " + n))) n++;
+  return "Vecka " + n;
+}
 $("delWeek").onclick = async () => {
   if (!delArmed) { delArmed = true; $("delWeek").textContent = "Tryck igen för att ta bort"; return; }
   const ids = wordsOf(editWeek.id).map(w => w.id);
@@ -871,6 +912,91 @@ function renderSettings() {
   $("logout").hidden = !sb;
 }
 $("voiceTest").onclick = () => tts("Hej! Nu ska vi öva stavning.");
+
+/* ===================== QR ===================== */
+const APP_URL = "https://lundstromp.github.io/veckans-ord/";
+function qrSvg(text) {
+  if (!window.qrcode) return "";
+  const q = qrcode(0, "M"); q.addData(text); q.make();
+  const n = q.getModuleCount(), m = 2; let d = "";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c + m},${r + m}h1v1h-1z`;
+  return `<svg viewBox="0 0 ${n + 2 * m} ${n + 2 * m}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#37352f"/></svg>`;
+}
+(function setupQr() {
+  const svg = qrSvg(APP_URL);
+  if (!svg) { $("qrBtn").hidden = true; return; }
+  $("qrBtn").innerHTML = svg; $("qrBig").innerHTML = svg; $("qrUrl").textContent = APP_URL;
+  $("qrBtn").onclick = () => { $("qrOverlay").hidden = false; };
+  $("qrClose").onclick = () => { $("qrOverlay").hidden = true; };
+  $("qrOverlay").onclick = e => { if (e.target === $("qrOverlay")) $("qrOverlay").hidden = true; };
+  document.addEventListener("keydown", e => { if (e.key === "Escape") $("qrOverlay").hidden = true; });
+})();
+
+/* ===================== read words from a photo ===================== */
+const OCR_SKIP = new Set(["veckans", "vecka", "ord", "v", "skapad", "av", "widgitonline", "widgitsymboler", "widgit", "software", "ltd", "com", "www", "namn", "datum", "läxa", "läxor", "glosor"]);
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = rej; document.head.append(s); }); }
+async function imageToCanvas(file) {
+  const url = URL.createObjectURL(file), img = new Image();
+  try { await new Promise((r, j) => { img.onload = r; img.onerror = j; img.src = url; }); }
+  finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
+  const s = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement("canvas");
+  c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+function binarize(src, th, satMax) {
+  const c = document.createElement("canvas"); c.width = src.width; c.height = src.height;
+  const g = c.getContext("2d"); g.drawImage(src, 0, 0);
+  const im = g.getImageData(0, 0, c.width, c.height), d = im.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], gr = d[i + 1], bl = d[i + 2], l = 0.299 * r + 0.587 * gr + 0.114 * bl, sat = Math.max(r, gr, bl) - Math.min(r, gr, bl);
+    d[i] = d[i + 1] = d[i + 2] = l < th && sat < satMax ? 0 : 255;   // dark, uncoloured ink stays, coloured pictures go
+  }
+  g.putImageData(im, 0, 0); return c;
+}
+/* Practice words: lowercase letters only, recognised with good confidence. Several passes are merged. */
+function collectWords(data, W, found) {
+  for (const w of data.words || []) {
+    const t = (w.text || "").normalize("NFC").replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
+    if (t.length < 2 || !/^[a-zåäöéü-]+$/.test(t) || w.confidence < 72) continue;
+    if (OCR_SKIP.has(t) || /^widgit/.test(t)) continue;
+    const x = (w.bbox.x0 + w.bbox.x1) / 2, y = (w.bbox.y0 + w.bbox.y1) / 2;
+    if (!found.has(t)) found.set(t, { t, col: x < W / 2 ? 0 : 1, y });
+  }
+}
+async function readSheet(file) {
+  const st = $("ocrStatus"); st.hidden = false;
+  const say = (t, p) => { $("ocrText").textContent = t; if (p != null) $("ocrBar").style.width = Math.round(p * 100) + "%"; };
+  say("Förbereder …", 0.02);
+  try {
+    if (!window.Tesseract) { say("Hämtar textläsaren (första gången tar det en stund) …", 0.05); await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"); }
+    const base = await imageToCanvas(file);
+    const passes = [base, binarize(base, 130, 60), binarize(base, 110, 40)];
+    let pass = 0;
+    const worker = await Tesseract.createWorker("swe", 1, { logger: m => {
+      if (m.status === "recognizing text") say(`Läser orden (steg ${pass + 1} av ${passes.length}) …`, 0.25 + (pass + m.progress) / passes.length * 0.75);
+      else if (/load/i.test(m.status)) say("Hämtar svenska språket …", 0.08 + (m.progress || 0) * 0.15);
+    } });
+    await worker.setParameters({ tessedit_pageseg_mode: "11" });   // sparse text: words in boxes and tables
+    const found = new Map(); let text = "";
+    for (; pass < passes.length; pass++) { const { data } = await worker.recognize(passes[pass]); text += "\n" + data.text; collectWords(data, base.width, found); }
+    await worker.terminate();
+    const have = new Set(draft.map(w => norm(w.word)).filter(Boolean));
+    const words = [...found.values()].filter(w => !have.has(w.t)).sort((a, b) => a.col - b.col || a.y - b.y).map(w => w.t);
+    const m = text.match(/\b(?:v|vecka)\s*\.?\s*(\d{1,2})\b/i);
+    if (!words.length) { say("Hittade inga nya ord. Prova en skarpare bild tagen rakt ovanifrån i bra ljus.", 1); return; }
+    draft = draft.filter(w => w.word.trim());
+    draft.push(...words.map(word => ({ ...blank(), word })));
+    if (!$("titleIn").value.trim() && m) {
+      const name = "Vecka " + m[1];
+      if (!S.weeks.some(w => norm(w.name) === norm(name))) $("titleIn").value = name;
+    }
+    renderRows();
+    say(`Hittade ${words.length} ord. Kontrollera listan: ta bort det som blev fel och lägg till ord som saknas.`, 1);
+  } catch (e) { console.error(e); say("Kunde inte läsa bilden. Kontrollera internetanslutningen och försök igen.", 0); }
+}
+$("photoBtn").onclick = () => $("sheetFile").click();
+$("sheetFile").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) readSheet(f); };
 
 boot();
 </script>
