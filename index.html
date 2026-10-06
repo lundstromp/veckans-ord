@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-title" content="Veckans ord">
 <meta name="theme-color" content="#ffffff">
 <!-- Security policy: scripts only from this site and two pinned CDNs, data only to Supabase and the OCR language files -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; connect-src 'self' https://evyuyizhcazxbbdddysa.supabase.co wss://evyuyizhcazxbbdddysa.supabase.co https://cdn.jsdelivr.net https://tessdata.projectnaptha.com data: blob:; img-src 'self' data: blob:; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; connect-src 'self' https://evyuyizhcazxbbdddysa.supabase.co wss://evyuyizhcazxbbdddysa.supabase.co https://cdn.jsdelivr.net https://tessdata.projectnaptha.com data: blob:; img-src 'self' data: blob:; media-src 'self' data: blob: https://evyuyizhcazxbbdddysa.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Veckans ord</title>
 <script>
 /* Fyll i från Supabase → Project Settings → API. Tomt = testläge (sparas bara i den här webbläsaren). */
@@ -183,6 +183,20 @@ button.trow:hover{background:var(--hover)}
 .ocr{width:100%;font-size:.88rem;color:var(--muted)}
 .ocr .bar2{margin-top:6px}
 .ocr .bar2 i{background:var(--blue)}
+.cell.bank{color:var(--blue)}
+.meaning{font-size:.95rem;color:var(--muted);text-align:center;max-width:340px;background:#f7f7f5;border-radius:6px;padding:8px 12px}
+.flagform{display:flex;flex-direction:column;gap:8px;width:100%}
+.flagform .opts{display:flex;flex-wrap:wrap;gap:6px}
+.flagform .opt{border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:.9rem}
+.flagform .opt[aria-pressed="true"]{background:var(--text);color:#fff;border-color:var(--text)}
+.flagform input{border:0;border-bottom:1px solid var(--line);padding:6px 0;outline:none;width:100%}
+.about{max-width:620px;padding-bottom:80px}
+.about p,.about li{color:var(--text);font-size:.95rem;line-height:1.6}
+.about ul{padding-left:20px;margin:6px 0}
+.about a{color:var(--blue)}
+.about .fine{color:var(--muted);font-size:.88rem}
+.flagrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:10px 4px;border-bottom:1px solid var(--line);align-items:center}
+.flagrow .s{color:var(--muted);font-size:.85rem}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .mode{font-size:.8rem;color:var(--faint);padding:24px 0 100px}
 @media (prefers-reduced-motion: reduce){.caret,.recdot::before{animation:none}}
@@ -238,8 +252,8 @@ button.trow:hover{background:var(--hover)}
     <div class="ocr" id="ocrStatus" hidden><span id="ocrText"></span><div class="bar2"><i id="ocrBar" style="width:0"></i></div></div>
   </div>
   <div class="callout">
-    <p>Spela in alla ord med din röst. Orden visas ett i taget, säg ordet och tryck <b>Nästa</b>.</p>
-    <button class="btn primary" id="recAll" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Spela in alla ord</button>
+    <p id="recHint">Orden läses upp av en datorröst. Vill du hellre att barnen hör din röst kan du spela in orden. Orden visas ett i taget, säg ordet och tryck <b>Nästa</b>.</p>
+    <button class="btn" id="recAll" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Spela in med egen röst</button>
   </div>
   <div class="thead"><span class="label">Ord</span><span class="label" style="text-align:center">Bild</span><span class="label" style="text-align:center">Röst</span><span></span></div>
   <div id="rows"></div>
@@ -279,6 +293,8 @@ button.trow:hover{background:var(--hover)}
       <div class="line" id="line"></div>
       <div class="fix" id="fix"></div>
       <button class="again" id="again" type="button" hidden>Lyssna igen</button>
+      <button class="again" id="meaningBtn" type="button" hidden>Vad betyder det?</button>
+      <div class="meaning" id="meaning" hidden></div>
     </div>
   </div>
   <div class="kbd off" id="kbd"></div>
@@ -300,13 +316,68 @@ button.trow:hover{background:var(--hover)}
     <button class="ghost dark" id="setBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Veckans ord</button>
   </div>
   <div class="h1">Inställningar</div>
-  <div class="h2">Datorröst</div>
-  <p class="sub">Används för ord som saknar inspelning.</p>
+  <div style="margin-top:14px"><button class="btn" id="toAbout" type="button">Om appen, källor och villkor</button></div>
+  <div class="h2">Uppläsning</div>
+  <p class="sub">Orden läses i första hand med din egen inspelning, i andra hand med datorrösten Mattias från Microsoft Azure och sist med telefonens egen röst.</p>
+  <div class="h2">Telefonens röst</div>
+  <p class="sub">Används bara för ord som saknas i ordbanken och inte är inspelade.</p>
   <div class="vlist" id="vlist"></div>
   <div style="margin-top:12px"><button class="btn" id="voiceTest" type="button">Testa rösten</button></div>
   <div class="h2">Konto</div>
   <p class="sub" id="acct"></p>
-  <div style="margin:12px 0 60px"><button class="btn" id="logout" type="button">Logga ut</button></div>
+  <div style="margin:12px 0 30px"><button class="btn" id="logout" type="button">Logga ut</button></div>
+  <div id="adminBox" hidden>
+    <div class="h2">Flaggade ord</div>
+    <p class="sub">Bara du ser den här listan. Markera som hanterad när ordet är rättat.</p>
+    <div id="flagList"></div>
+  </div>
+  <div style="height:60px"></div>
+</main>
+
+<!-- ABOUT -->
+<main id="v-about" class="view" hidden>
+  <div class="bar">
+    <button class="ghost dark" id="aboutBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Inställningar</button>
+  </div>
+  <div class="about">
+    <div class="h1">Om appen</div>
+    <p>Veckans ord är ett privat hobbyprojekt för att öva stavning hemma, gjort för en familj och några vänner. Appen är gratis och har ingen reklam.</p>
+
+    <div class="h2">Uppläsningen är en datorröst</div>
+    <p>Orden i ordbanken läses upp av en <b>AI-genererad röst</b>, ”Mattias”, från <a href="https://learn.microsoft.com/azure/ai-services/speech-service/text-to-speech" target="_blank" rel="noopener">Microsoft Azure AI Speech</a>. Det är inte en riktig människa som talar. Ljudet skapades i förväg, en gång per ord, och lagras som ljudfiler. Inget du skriver i appen skickas till Microsoft.</p>
+    <p>Datorrösten kan ibland uttala ett ord fel. Har du spelat in ordet med din egen röst används alltid den i stället. Låter något konstigt kan en vuxen flagga ordet under Ändra.</p>
+    <p class="fine">Användningen följer Microsofts <a href="https://learn.microsoft.com/legal/ai-code-of-conduct" target="_blank" rel="noopener">uppförandekod för AI-tjänster</a>, som bland annat kräver att det framgår att rösten är datorgenererad.</p>
+
+    <div class="h2">Ordbanken och hur orden valts ut</div>
+    <p>Ordbanken innehåller cirka 10 500 svenska ord med färdig uppläsning. Orden kommer från öppna data från <a href="https://sprakbanken.se" target="_blank" rel="noopener">Språkbanken Text vid Göteborgs universitet</a>:</p>
+    <ul>
+      <li><a href="https://sprakbanken.se/resurser/lasbart" target="_blank" rel="noopener">LäSBarT</a>, en samling lättläst svenska och barnböcker (1,1 miljoner ord). Med kommer alla ordformer som förekommer minst 5 gånger, cirka 8 800 ord.</li>
+      <li><a href="https://sprakbanken.se/resurser/kelly" target="_blank" rel="noopener">Kelly-listan</a>, vanliga svenska ord indelade i nivåer. Med kommer grundformerna på nivå A1–B1, cirka 3 900 ord.</li>
+    </ul>
+    <p>Ord som finns i båda räknas en gång. Svordomar och skällsord är borttagna, och vanliga skolord som saknades har lagts till. Egennamn är inte med. Ord som inte finns i ordbanken går ändå att lägga in. De läses då med telefonens röst eller med din inspelning.</p>
+    <p class="fine">Språkbankens data används under licensen <a href="https://creativecommons.org/licenses/by/4.0/deed.sv" target="_blank" rel="noopener">CC BY 4.0</a>. Källa: Språkbanken Text, Göteborgs universitet.</p>
+
+    <div class="h2">Förklaringar och meningar</div>
+    <p>Ord som är lätta att blanda ihop, till exempel bygd och byggd, har en kort mening som läses upp. Många ord har också en förklaring under ”Vad betyder det?”. Meningarna och förklaringarna är skrivna med hjälp av AI (Claude från Anthropic) och har bara granskats stickprovsvis. De kan innehålla fel. Flagga gärna det som blivit fel.</p>
+
+    <div class="h2">Fotografera lappen</div>
+    <p>Textigenkänningen görs med <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">Tesseract.js</a> direkt i din webbläsare. Bilden skickas inte till någon server. Första gången hämtas språkdata för svenska (cirka 10 MB).</p>
+
+    <div class="h2">Dina uppgifter</div>
+    <ul>
+      <li>Appen sparar e-postadress och lösenord för inloggning, veckornas ord, bilder och inspelningar du lägger till, barnens namn och resultaten från förhören.</li>
+      <li>Uppgifterna lagras hos <a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a> i Stockholm. Varje konto ser bara sina egna uppgifter. Den som driver appen kan som administratör tekniskt se databasen, men gör det inte utan anledning.</li>
+      <li>Använd gärna ett smeknamn för barnen i stället för det riktiga namnet.</li>
+      <li>Flaggningar sparas med ordet och orsaken, utan barnens namn.</li>
+      <li>Vill du att ditt konto och dina uppgifter tas bort, kontakta den som delade appen med dig.</li>
+    </ul>
+
+    <div class="h2">Ansvarsfriskrivning</div>
+    <p class="fine">Appen tillhandahålls kostnadsfritt och i befintligt skick som ett privat hobbyprojekt, utan några garantier. Den kan innehålla fel, till exempel felaktiga uttal, förklaringar eller resultat, och kan vara otillgänglig eller sluta fungera utan förvarning. Uppgifter kan gå förlorade, eftersom ingen säkerhetskopiering garanteras. Användningen sker på egen risk. Den som utvecklat och driver appen ansvarar inte för direkta eller indirekta skador eller förluster som uppstår genom användning av appen, i den utsträckning lagen tillåter. Appen ersätter inte skolans undervisning. Genom att använda appen godtar du detta.</p>
+
+    <div class="h2">Program med öppen källkod</div>
+    <p class="fine"><a href="https://github.com/supabase/supabase-js" target="_blank" rel="noopener">supabase-js</a> (MIT), <a href="https://github.com/kazuhikoarase/qrcode-generator" target="_blank" rel="noopener">qrcode-generator</a> (MIT) och <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">Tesseract.js</a> (Apache 2.0). Bilder i appen är emojis eller egna foton.</p>
+  </div>
 </main>
 
 <div class="overlay" id="qrOverlay" hidden>
@@ -332,7 +403,7 @@ const imgTag = u => typeof u === "string" && /^data:image\/(jpeg|png|webp|gif);b
 const LS = { get(k, d = null) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 let toastT;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2500 + msg.length * 45); }
-const VIEWS = ["auth", "home", "edit", "rec", "week", "stats", "settings"];
+const VIEWS = ["auth", "home", "edit", "rec", "week", "stats", "settings", "about"];
 function show(v) { for (const x of VIEWS) $("v-" + x).hidden = x !== v; scrollTo(0, 0); }
 const ICON = {
   pic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m21 17-5-5-9 8"/></svg>',
@@ -362,6 +433,14 @@ const api = {
     const a = LOCAL.get(t);
     for (const r of rows) { const i = a.findIndex(x => x[key] === r[key]); if (i >= 0) a[i] = { ...a[i], ...r }; else a.push({ created_at: new Date().toISOString(), ...r }); }
     LOCAL.put(t, a);
+  },
+  async insert(t, row) {
+    if (sb) { const { error } = await timed(sb.from(t).insert(row)); if (error) throw error; return; }
+    const a = LOCAL.get(t); a.push({ id: uuid(), created_at: new Date().toISOString(), ...row }); LOCAL.put(t, a);
+  },
+  async update(t, patch, ids) {
+    if (sb) { const { error } = await timed(sb.from(t).update(patch).in("id", ids)); if (error) throw error; return; }
+    LOCAL.put(t, LOCAL.get(t).map(r => ids.includes(r.id) ? { ...r, ...patch } : r));
   },
   async remove(t, ids, key = "id") {
     ids = [].concat(ids); if (!ids.length) return;
@@ -481,6 +560,7 @@ async function afterLogin() {
     try { await api.upsert("weeks", week); await api.upsert("words", words); S.weeks.push(week); S.words.push(...words); LS.set(seedKey, true); } catch (e) { console.error(e); }
   }
   if (!S.kids.some(k => k.id === kid)) kid = S.kids[0]?.id || null;
+  loadBank();
   renderHome();
 }
 
@@ -520,6 +600,8 @@ $("weekList").addEventListener("click", e => { const b = e.target.closest("[data
 $("addWeek").onclick = () => openEdit(null);
 $("toStats").onclick = () => { statKid = kid; delKidArmed = false; renderStats(); show("stats"); };
 $("toSettings").onclick = () => { renderSettings(); show("settings"); };
+$("toAbout").onclick = () => show("about");
+$("aboutBack").onclick = () => { renderSettings(); show("settings"); };
 $("setBack").onclick = renderHome;
 $("statsBack").onclick = renderHome;
 
@@ -606,7 +688,27 @@ function tts(text) {
   if (!voice) pickVoice(); stopAudio();
   const u = new SpeechSynthesisUtterance(text); u.lang = "sv-SE"; if (voice) u.voice = voice; u.rate = 0.8; speechSynthesis.speak(u);
 }
-function sayWord(w) { const m = media[w.id]; if (m && m.audio) playClip(m.audio); else tts(w.word); }
+/* ---------- shared word bank: pre-made audio (Azure, voice Mattias) and explanations ---------- */
+let BANK = null, bankLoading = null;
+function loadBank() {
+  if (!bankLoading) bankLoading = fetch("ordbank.json").then(r => r.ok ? r.json() : null).then(j => (BANK = j)).catch(() => null);
+  return bankLoading;
+}
+const bankOf = word => (BANK && word && BANK.words[norm(word)]) || null;
+const bankUrl = (e, kind) => BANK.base + kind + "/" + e[0] + ".m4a";
+const explainOf = word => { const e = bankOf(word); return e && e[2] >= 0 ? BANK.texts[e[2]] : ""; };
+function playUrl(url, fallback) {
+  stopAudio(); player.src = url;
+  player.play().catch(() => fallback && fallback());
+}
+/* Own recording first, then the word bank (with sentence for words that sound alike), then the phone's voice */
+function sayWord(w) {
+  const m = media[w.id];
+  if (m && m.audio) return playClip(m.audio);
+  const e = bankOf(w.word);
+  if (e) return playUrl(bankUrl(e, e[1] ? "mening" : "ord"), () => tts(w.word));
+  tts(w.word);
+}
 
 /* ===================== edit week ===================== */
 let editWeek = null, draft = [], removed = [], popFor = null, imgTarget = null, delArmed = false;
@@ -620,18 +722,23 @@ async function openEdit(weekId) {
   $("ocrStatus").hidden = true;
   $("delWeek").hidden = !editWeek; $("delWeek").textContent = "Ta bort veckan";
   show("edit"); renderRows();
-  if (editWeek) { await loadMedia(draft.map(w => w.id)); renderRows(); }
-  else $("titleIn").focus();
+  await loadBank();
+  if (editWeek) { await loadMedia(draft.map(w => w.id)); }
+  renderRows();
+  if (!editWeek) $("titleIn").focus();
 }
 const blank = () => ({ id: uuid(), word: "", emoji: "", _new: true });
 function renderRows() {
+  const missing = draft.filter(w => w.word.trim() && !(media[w.id] && media[w.id].audio) && !bankOf(w.word)).length;
+  $("recHint").innerHTML = (missing ? `<b>${missing} ${missing === 1 ? "ord saknas" : "ord saknas"} i ordbanken</b> och läses med telefonens röst om du inte spelar in ${missing === 1 ? "det" : "dem"}. ` : "Orden läses upp av en datorröst. ")
+    + "Vill du hellre att barnen hör din röst kan du spela in orden. Orden visas ett i taget, säg ordet och tryck <b>Nästa</b>.";
   $("rows").innerHTML = draft.map((w, i) => {
     const m = media[w.id] || {};
     const pic = imgTag(m.image) || (w.emoji ? esc(w.emoji) : ICON.pic);
     const row = `<div class="wrow">
       <input data-i="${i}" value="${esc(w.word)}" placeholder="Skriv ett ord" aria-label="Ord ${i + 1}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="next">
       <button type="button" class="cell ${m.image || w.emoji ? "on" : ""}" data-act="pic" data-i="${i}" aria-label="Bild">${pic}</button>
-      <button type="button" class="cell ${m.audio ? "on" : "rec"}" data-act="voice" data-i="${i}" aria-label="${m.audio ? "Lyssna" : "Spela in"}">${m.audio ? ICON.play : ICON.mic}</button>
+      <button type="button" class="cell ${m.audio ? "on" : bankOf(w.word) ? "bank" : "rec"}" data-act="voice" data-i="${i}" aria-label="${m.audio ? "Lyssna på din inspelning" : bankOf(w.word) ? "Lyssna på datorrösten" : "Spela in"}">${m.audio || bankOf(w.word) ? ICON.play : ICON.mic}</button>
       <button type="button" class="x" data-act="del" data-i="${i}" aria-label="Ta bort ordet">${ICON.x}</button>
     </div>`;
     let pop = "";
@@ -639,10 +746,22 @@ function renderRows() {
       <input data-emoji="${i}" value="${esc(w.emoji)}" placeholder="🙂" aria-label="Emoji" autocomplete="off">
       <button type="button" class="btn" data-act="pickimg" data-i="${i}">Välj bild</button>
       ${m.image || w.emoji ? `<button type="button" class="ghost" data-act="clearpic" data-i="${i}">Ta bort</button>` : ""}</div>`;
-    if (popFor && popFor.i === i && popFor.kind === "voice") pop = `<div class="pop">
-      <button type="button" class="btn" data-act="listen" data-i="${i}">${ICON.play} Lyssna</button>
+    if (popFor && popFor.i === i && popFor.kind === "voice") pop = m.audio ? `<div class="pop">
+      <button type="button" class="btn" data-act="listen" data-i="${i}">${ICON.play} Din röst</button>
       <button type="button" class="btn" data-act="rerec" data-i="${i}">${ICON.mic} Spela in igen</button>
-      <button type="button" class="ghost" data-act="clearvoice" data-i="${i}">Ta bort</button></div>`;
+      <button type="button" class="ghost" data-act="clearvoice" data-i="${i}">Ta bort inspelningen</button>
+      ${bankOf(w.word) ? `<button type="button" class="ghost" data-act="flag" data-i="${i}">Flagga datorrösten</button>` : ""}</div>` : `<div class="pop">
+      <span class="sub" style="flex-basis:100%">Datorröst${explainOf(w.word) ? ". Betyder: " + esc(explainOf(w.word)) : ""}</span>
+      <button type="button" class="btn" data-act="listen" data-i="${i}">${ICON.play} Lyssna</button>
+      <button type="button" class="btn" data-act="rerec" data-i="${i}">${ICON.mic} Spela in egen röst</button>
+      <button type="button" class="ghost" data-act="flag" data-i="${i}">Flagga ordet</button></div>`;
+    if (popFor && popFor.i === i && popFor.kind === "flag") pop = `<div class="pop"><div class="flagform">
+      <span class="sub">Vad är fel med <b>${esc(w.word)}</b>?</span>
+      <div class="opts">${[["uttal", "Uttalet låter fel"], ["lika", "Låter som ett annat ord"], ["forklaring", "Förklaringen är fel eller saknas"], ["annat", "Annat"]]
+        .map(([k, t]) => `<button type="button" class="opt" data-act="flagopt" data-i="${i}" data-k="${k}" aria-pressed="${popFor.reason === k}">${t}</button>`).join("")}</div>
+      <input id="flagNote" maxlength="300" placeholder="Kommentar (frivilligt)" autocomplete="off">
+      <div><button type="button" class="btn primary" data-act="flagsend" data-i="${i}" ${popFor.reason ? "" : "disabled"}>Skicka</button>
+      <button type="button" class="ghost" data-act="flagcancel" data-i="${i}">Avbryt</button></div></div></div>`;
     return row + pop;
   }).join("");
 }
@@ -664,13 +783,20 @@ $("rows").addEventListener("paste", e => {
   e.preventDefault(); const i = +t.dataset.i;
   draft[i].word = parts[0]; draft.splice(i + 1, 0, ...parts.slice(1).map(word => ({ ...blank(), word }))); renderRows();
 });
-$("rows").addEventListener("focusout", e => { if (e.target.dataset.emoji !== undefined) renderRows(); });
+$("rows").addEventListener("focusout", e => {
+  if (e.target.dataset.emoji !== undefined) return renderRows();
+  if (e.target.dataset.i !== undefined && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest("#rows"))) renderRows();
+});
 $("rows").addEventListener("click", async e => {
   const b = e.target.closest("[data-act]"); if (!b) return;
   const i = +b.dataset.i, w = draft[i], act = b.dataset.act, m = media[w.id];
   if (act === "pic") { popFor = popFor && popFor.i === i && popFor.kind === "pic" ? null : { i, kind: "pic" }; renderRows(); return; }
   if (act === "voice") {
-    if (m && m.audio) { playClip(m.audio); popFor = popFor && popFor.i === i && popFor.kind === "voice" ? null : { i, kind: "voice" }; renderRows(); return; }
+    const e = bankOf(w.word);
+    if ((m && m.audio) || e) {
+      if (m && m.audio) playClip(m.audio); else playUrl(bankUrl(e, e[1] ? "mening" : "ord"));
+      popFor = popFor && popFor.i === i && popFor.kind === "voice" ? null : { i, kind: "voice" }; renderRows(); return;
+    }
     if (!w.word.trim()) { toast("Skriv ordet först."); return; }
     await busy(b, "…", async () => { if (await saveDraft()) openRecorder([draft.find(x => x.id === w.id)]); });
     return;
@@ -678,7 +804,18 @@ $("rows").addEventListener("click", async e => {
   if (act === "del") { if (!w._new) removed.push(w.id); draft.splice(i, 1); if (!draft.length) draft.push(blank()); popFor = null; renderRows(); return; }
   if (act === "pickimg") { imgTarget = w; $("imgFile").click(); return; }
   if (act === "clearpic") { w.emoji = ""; w._dirty = true; if (m && m.image) { media[w.id] = { ...m, image: null }; w._imgDirty = true; } renderRows(); return; }
-  if (act === "listen") { playClip(m.audio); return; }
+  if (act === "listen") { if (m && m.audio) playClip(m.audio); else { const e = bankOf(w.word); if (e) playUrl(bankUrl(e, e[1] ? "mening" : "ord")); } return; }
+  if (act === "flag") { popFor = { i, kind: "flag", reason: null }; renderRows(); return; }
+  if (act === "flagopt") { const note = $("flagNote")?.value || ""; popFor.reason = b.dataset.k; renderRows(); $("flagNote").value = note; return; }
+  if (act === "flagcancel") { popFor = null; renderRows(); return; }
+  if (act === "flagsend") {
+    const row = { ord: norm(w.word).slice(0, 60), orsak: popFor.reason, kommentar: ($("flagNote")?.value || "").trim().slice(0, 300) };
+    await busy(b, "Skickar …", async () => {
+      try { await api.insert("flaggor", row); toast("Tack! Ordet är flaggat."); popFor = null; renderRows(); }
+      catch (err) { console.error(err); toast(limitMsg(err) || "Kunde inte skicka flaggan. Försök igen senare."); }
+    });
+    return;
+  }
   if (act === "rerec") { await busy(b, "Sparar …", async () => { if (await saveDraft()) openRecorder([draft.find(x => x.id === w.id)]); }); return; }
   if (act === "clearvoice") { media[w.id] = { ...m, audio: null }; await safe(api.upsert("media", { word_id: w.id, audio: null }, "word_id")); popFor = null; renderRows(); return; }
 });
@@ -866,11 +1003,11 @@ async function openWeek(id) {
   const words = quizWords();
   resetStage(); $("qcount").textContent = words.length + " ord";
   show("week");
-  try { await loadMedia(words.map(w => w.id)); } catch {}
+  try { await Promise.all([loadMedia(words.map(w => w.id)), loadBank()]); } catch {}
 }
 function resetStage() {
   $("typed").className = "typed"; $("typed").textContent = ""; $("typed").hidden = false; $("line").className = "line"; $("fix").textContent = "";
-  $("done").hidden = true; $("again").hidden = true; $("qpic").hidden = true; setPlayIcon(false); $("kbd").classList.add("off");
+  $("done").hidden = true; $("again").hidden = true; $("meaningBtn").hidden = true; $("meaning").hidden = true; $("qpic").hidden = true; setPlayIcon(false); $("kbd").classList.add("off");
 }
 function setPlayIcon(p) { $("icoPlay").toggleAttribute("hidden", p); $("icoPause").toggleAttribute("hidden", !p); $("playBtn").setAttribute("aria-label", p ? "Pausa" : q ? "Fortsätt" : "Starta"); }
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -897,6 +1034,7 @@ function nextWord() {
   $("typed").className = "typed"; $("line").className = "line"; $("fix").textContent = "";
   drawTyped(); $("qcount").textContent = `${q.ok.size} av ${q.words.length} klara`;
   showPic(q.queue[0]); $("kbd").classList.remove("off"); $("again").hidden = false;
+  const ex = explainOf(q.queue[0].word); $("meaning").textContent = ex; $("meaning").hidden = true; $("meaningBtn").hidden = !ex;
   sayWord(q.queue[0]);
 }
 function drawTyped() { $("typed").innerHTML = esc(q.typed) + (q.phase === "typing" ? '<span class="caret"></span>' : ""); }
@@ -910,7 +1048,7 @@ function lcsMarks(a, b) {
 function submit() {
   if (!q || q.phase !== "typing" || !q.typed.trim()) return;
   const w = q.queue[0], right = norm(q.typed) === norm(w.word);
-  q.phase = "feedback"; drawTyped(); $("kbd").classList.add("off"); $("again").hidden = true;
+  q.phase = "feedback"; drawTyped(); $("kbd").classList.add("off"); $("again").hidden = true; $("meaningBtn").hidden = true; $("meaning").hidden = true;
   $("typed").className = "typed " + (right ? "right" : "wrong"); $("line").className = "line " + (right ? "right" : "wrong");
   q.queue.shift();
   if (right) q.ok.add(w.id);
@@ -936,6 +1074,7 @@ async function afterFeedback() {
   $("qcount").textContent = ok === n ? "Alla rätt på första försöket!" : "rätt på första försöket";
 }
 $("again").onclick = () => { if (q && q.phase === "typing") sayWord(q.queue[0]); };
+$("meaningBtn").onclick = () => { $("meaning").hidden = !$("meaning").hidden; };
 $("weekBack").onclick = () => { stopQuiz(); renderHome(); };
 $("weekEdit").onclick = () => { stopQuiz(); openEdit(week.id); };
 (function buildKbd() {
@@ -1018,6 +1157,29 @@ function renderSettings() {
   $("vlist").onchange = e => { voice = sv[+e.target.value]; LS.set("vo:voice", voice.voiceURI); tts("Hej! Nu ska vi öva stavning."); };
   $("acct").textContent = sb ? `Inloggad som ${user?.email || ""}. Resultat och inspelningar synkas mellan alla enheter som är inloggade med samma konto.` : "Testläge utan konto. Allt sparas bara i den här webbläsaren.";
   $("logout").hidden = !sb;
+  renderFlags();
+}
+const REASONS = { uttal: "uttalet låter fel", lika: "låter som ett annat ord", forklaring: "förklaringen", annat: "annat" };
+async function renderFlags() {
+  let admin = !sb;   // test mode shows the list so it can be tried out
+  if (sb) { try { admin = (await api.list("admins")).length > 0; } catch { admin = false; } }
+  $("adminBox").hidden = !admin; if (!admin) return;
+  let flags = [];
+  try { flags = (await api.list("flaggor")).filter(f => !f.hanterad); } catch { $("flagList").innerHTML = `<p class="sub">Kunde inte hämta flaggor.</p>`; return; }
+  await loadBank();
+  const by = new Map();
+  for (const f of flags) { const g = by.get(f.ord) || { ord: f.ord, ids: [], why: [], notes: [], last: "" }; g.ids.push(f.id); g.why.push(REASONS[f.orsak] || f.orsak); if (f.kommentar) g.notes.push(f.kommentar); if (f.created_at > g.last) g.last = f.created_at; by.set(f.ord, g); }
+  const list = [...by.values()].sort((a, b) => b.ids.length - a.ids.length || (a.last < b.last ? 1 : -1));
+  $("flagList").innerHTML = list.length ? list.map((g, i) => `<div class="flagrow">
+      <span><b style="font-weight:500">${esc(g.ord)}</b> · ${g.ids.length} ${g.ids.length === 1 ? "flagga" : "flaggor"}</span>
+      <span>${bankOf(g.ord) ? `<button class="ghost" type="button" data-fplay="${i}">${ICON.play}</button>` : ""}<button class="ghost" type="button" data-fdone="${i}">Hanterad</button></span>
+      <span class="s">${esc([...new Set(g.why)].join(", "))}${g.notes.length ? " · ”" + esc(g.notes.join("”, ”")) + "”" : ""}${explainOf(g.ord) ? " · förklaring: " + esc(explainOf(g.ord)) : ""}</span></div>`).join("")
+    : `<p class="sub">Inga flaggade ord just nu.</p>`;
+  $("flagList").onclick = async e => {
+    const p = e.target.closest("[data-fplay]"), d = e.target.closest("[data-fdone]");
+    if (p) { const g = list[+p.dataset.fplay], en = bankOf(g.ord); unlockAudio(); playUrl(bankUrl(en, en[1] ? "mening" : "ord")); }
+    if (d) { const g = list[+d.dataset.fdone]; await safe(api.update("flaggor", { hanterad: true }, g.ids)); renderFlags(); }
+  };
 }
 $("voiceTest").onclick = () => tts("Hej! Nu ska vi öva stavning.");
 
@@ -1067,6 +1229,7 @@ function collectWords(data, W, found) {
   for (const w of data.words || []) {
     const t = (w.text || "").normalize("NFC").replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
     if (t.length < 2 || !/^[a-zåäöéü-]+$/.test(t) || w.confidence < 72) continue;
+    if (BANK && !bankOf(t) && w.confidence < 88) continue;   // unknown words need high confidence
     if (OCR_SKIP.has(t) || /^widgit/.test(t)) continue;
     const x = (w.bbox.x0 + w.bbox.x1) / 2, y = (w.bbox.y0 + w.bbox.y1) / 2;
     if (!found.has(t)) found.set(t, { t, col: x < W / 2 ? 0 : 1, y });
@@ -1078,6 +1241,7 @@ async function readSheet(file) {
   say("Förbereder …", 0.02);
   try {
     if (!window.Tesseract) { say("Hämtar textläsaren (första gången tar det en stund) …", 0.05); await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js", "sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F"); }
+    await loadBank();
     const base = await imageToCanvas(file);
     const passes = [base, binarize(base, 130, 60), binarize(base, 110, 40)];
     let pass = 0;
