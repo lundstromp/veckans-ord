@@ -42,6 +42,8 @@ button:focus-visible,input:focus-visible{outline:2px solid rgba(35,131,226,.5);o
 .ghost:hover{background:var(--hover)} .ghost:active{background:var(--press)}
 .ghost svg{width:18px;height:18px}
 .ghost.dark{color:var(--text)}
+.ghost.save{color:var(--blue);font-weight:500}
+.ghost:disabled,.btn:disabled{opacity:.5;pointer-events:none}
 .btn{padding:9px 16px;border-radius:6px;font-weight:500;font-size:.95rem;border:1px solid var(--line);display:inline-flex;align-items:center;gap:8px;justify-content:center}
 .btn:hover{background:var(--hover)}
 .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
@@ -221,10 +223,10 @@ button.trow:hover{background:var(--hover)}
 <!-- EDIT -->
 <main id="v-edit" class="view" hidden>
   <div class="bar">
-    <button class="ghost dark" id="editBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Veckans ord</button>
+    <button class="ghost dark" id="editBack" type="button">Avbryt</button>
     <span class="grow"></span>
     <span class="crumb" id="editMode"></span>
-    <button class="ghost dark" id="editDone" type="button">Klar</button>
+    <button class="ghost save" id="editDone" type="button">Spara</button>
   </div>
   <input class="titleIn" id="titleIn" maxlength="40" placeholder="Vecka x" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Veckans namn">
   <div class="callout" id="photoCallout">
@@ -336,26 +338,29 @@ const ICON = {
 
 /* ===================== data layer ===================== */
 let sb = null, user = null;
+function timed(p, ms = 15000) {
+  return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
+}
 const LOCAL = { get: t => LS.get("vo-local:" + t, []), put: (t, a) => LS.set("vo-local:" + t, a) };
 const api = {
   async list(t, f = {}) {
     if (sb) {
       let q = sb.from(t).select(f.cols || "*");
       if (f.in) q = q.in(f.in[0], f.in[1]);
-      const { data, error } = await q; if (error) throw error; return data;
+      const { data, error } = await timed(q); if (error) throw error; return data;
     }
     let a = LOCAL.get(t); if (f.in) a = a.filter(r => f.in[1].includes(r[f.in[0]])); return a;
   },
   async upsert(t, rows, key = "id") {
     rows = [].concat(rows); if (!rows.length) return;
-    if (sb) { const { error } = await sb.from(t).upsert(rows, { onConflict: key }); if (error) throw error; return; }
+    if (sb) { const { error } = await timed(sb.from(t).upsert(rows, { onConflict: key }), 30000); if (error) throw error; return; }
     const a = LOCAL.get(t);
     for (const r of rows) { const i = a.findIndex(x => x[key] === r[key]); if (i >= 0) a[i] = { ...a[i], ...r }; else a.push({ created_at: new Date().toISOString(), ...r }); }
     LOCAL.put(t, a);
   },
   async remove(t, ids, key = "id") {
     ids = [].concat(ids); if (!ids.length) return;
-    if (sb) { const { error } = await sb.from(t).delete().in(key, ids); if (error) throw error; return; }
+    if (sb) { const { error } = await timed(sb.from(t).delete().in(key, ids)); if (error) throw error; return; }
     LOCAL.put(t, LOCAL.get(t).filter(r => !ids.includes(r[key])));
   },
 };
@@ -383,7 +388,7 @@ const SEED = { name: "Vecka 2", words: [["bygd", "🏘️"], ["byggd", "🧱"], 
 let signUpMode = false;
 async function boot() {
   if (CONFIG.url && CONFIG.key && window.supabase && !new URLSearchParams(location.search).has("test")) {
-    sb = window.supabase.createClient(CONFIG.url, CONFIG.key, { auth: { persistSession: true, autoRefreshToken: true } });
+    sb = window.supabase.createClient(CONFIG.url, CONFIG.key, { auth: { persistSession: true, autoRefreshToken: true, lock: async (_name, _timeout, fn) => fn() } });
     const { data } = await sb.auth.getSession();
     if (!data.session) { show("auth"); return; }
     user = data.session.user;
@@ -505,12 +510,39 @@ function clipFrom(d) {
   for (let i = 0; i < out.length; i++) out[i] = muEnc(d[s + i] * g);
   return b64enc(out);
 }
-let curSrc = null;
-function stopAudio() { try { curSrc && curSrc.stop(); } catch {} curSrc = null; try { speechSynthesis.cancel(); } catch {} }
-function playClip(b64) {
-  const bytes = b64dec(b64), ac = audioCtx(), ab = ac.createBuffer(1, bytes.length, SR), ch = ab.getChannelData(0);
+/* Playback goes through an <audio> element: on iPhone it is heard even when the ring/silent switch is on silent,
+   which Web Audio is not. One element is reused so it stays unlocked after the first tap. */
+const player = new Audio(); player.playsInline = true; player.preload = "auto";
+let playerUrl = null, curSrc = null;
+function wav(samples) {
+  const n = samples.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVE"); str(12, "fmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, SR, true); v.setUint32(28, SR * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 32767, true);
+  return new Blob([buf], { type: "audio/wav" });
+}
+const SILENCE = URL.createObjectURL(wav(new Float32Array(SR / 20)));
+function unlockAudio() { if (!player.src || player.paused) { player.src = SILENCE; player.play().catch(() => {}); } }
+function stopAudio() {
+  try { player.pause(); } catch {}
+  try { curSrc && curSrc.stop(); } catch {} curSrc = null;
+  try { speechSynthesis.cancel(); } catch {}
+}
+function playClipWebAudio(bytes) {
+  const ac = audioCtx(), ab = ac.createBuffer(1, bytes.length, SR), ch = ab.getChannelData(0);
   for (let i = 0; i < bytes.length; i++) ch[i] = muDec(bytes[i]);
-  stopAudio(); curSrc = ac.createBufferSource(); curSrc.buffer = ab; curSrc.connect(ac.destination); curSrc.start();
+  curSrc = ac.createBufferSource(); curSrc.buffer = ab; curSrc.connect(ac.destination); curSrc.start();
+}
+function playClip(b64) {
+  const bytes = b64dec(b64), f = new Float32Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) f[i] = muDec(bytes[i]);
+  stopAudio();
+  if (playerUrl) URL.revokeObjectURL(playerUrl);
+  playerUrl = URL.createObjectURL(wav(f));
+  player.src = playerUrl;
+  player.play().catch(() => playClipWebAudio(bytes));
 }
 
 /* text-to-speech fallback */
@@ -593,14 +625,14 @@ $("rows").addEventListener("click", async e => {
   if (act === "voice") {
     if (m && m.audio) { playClip(m.audio); popFor = popFor && popFor.i === i && popFor.kind === "voice" ? null : { i, kind: "voice" }; renderRows(); return; }
     if (!w.word.trim()) { toast("Skriv ordet först."); return; }
-    if (await saveDraft()) openRecorder([draft.find(x => x.id === w.id)]);
+    await busy(b, "…", async () => { if (await saveDraft()) openRecorder([draft.find(x => x.id === w.id)]); });
     return;
   }
   if (act === "del") { if (!w._new) removed.push(w.id); draft.splice(i, 1); if (!draft.length) draft.push(blank()); popFor = null; renderRows(); return; }
   if (act === "pickimg") { imgTarget = w; $("imgFile").click(); return; }
   if (act === "clearpic") { w.emoji = ""; w._dirty = true; if (m && m.image) { media[w.id] = { ...m, image: null }; w._imgDirty = true; } renderRows(); return; }
   if (act === "listen") { playClip(m.audio); return; }
-  if (act === "rerec") { if (await saveDraft()) openRecorder([draft.find(x => x.id === w.id)]); return; }
+  if (act === "rerec") { await busy(b, "Sparar …", async () => { if (await saveDraft()) openRecorder([draft.find(x => x.id === w.id)]); }); return; }
   if (act === "clearvoice") { media[w.id] = { ...m, audio: null }; await safe(api.upsert("media", { word_id: w.id, audio: null }, "word_id")); popFor = null; renderRows(); return; }
 });
 $("imgFile").onchange = async e => {
@@ -640,10 +672,19 @@ async function saveDraft() {
     S.words = S.words.filter(w => w.week_id !== week.id).concat(rows);
     draft = rows.map(r => ({ ...r })); removed = [];
     return true;
-  } catch (e) { console.error(e); toast("Kunde inte spara. Kontrollera internetanslutningen."); return false; }
+  } catch (e) { console.error(e); toast(e && e.message === "timeout" ? "Det tog för lång tid att spara. Stäng andra flikar med appen och försök igen." : "Kunde inte spara. Kontrollera internetanslutningen."); return false; }
 }
-$("editDone").onclick = async () => { if (await saveDraft()) openWeek(editWeek.id); };
-$("editBack").onclick = async () => { if (draft.some(w => w.word.trim()) && !(await saveDraft())) return; renderHome(); };
+/* Shows "Sparar …" on the pressed button and blocks double taps while saving */
+async function busy(btn, label, fn) {
+  if (btn.disabled) return;
+  const old = btn.innerHTML; btn.disabled = true; btn.textContent = label;
+  try { return await fn(); } finally { btn.disabled = false; btn.innerHTML = old; }
+}
+$("editDone").onclick = () => busy($("editDone"), "Sparar …", async () => {
+  const isNew = !editWeek;
+  if (await saveDraft()) { if (isNew) renderHome(); else openWeek(editWeek.id); }
+});
+$("editBack").onclick = () => { popFor = null; if (editWeek) openWeek(editWeek.id); else renderHome(); };
 function nextFreeName() {
   const taken = new Set(S.weeks.map(w => norm(w.name)));
   let n = 1; for (const w of S.weeks) { const m = w.name.match(/(\d+)/); if (m) n = Math.max(n, +m[1] + 1); }
@@ -656,7 +697,7 @@ $("delWeek").onclick = async () => {
   await safe(api.remove("media", ids, "word_id")); await safe(api.remove("words", ids)); await safe(api.remove("weeks", editWeek.id));
   S.weeks = S.weeks.filter(w => w !== editWeek); S.words = S.words.filter(w => w.week_id !== editWeek.id); renderHome();
 };
-$("recAll").onclick = async () => { if (await saveDraft()) openRecorder(draft.slice()); };
+$("recAll").onclick = () => busy($("recAll"), "Sparar orden …", async () => { if (await saveDraft()) openRecorder(draft.slice()); });
 
 /* ===================== recorder ===================== */
 let R = null;
@@ -706,10 +747,12 @@ function renderStudio() {
 }
 async function startMic() {
   if (!navigator.mediaDevices?.getUserMedia) { toast("Webbläsaren kan inte spela in. Använd Safari eller Chrome."); return; }
+  const ac = audioCtx();   // must start inside the tap on iPhone, before any await
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
   catch { toast("Mikrofonen är blockerad. Tillåt mikrofonen för den här sidan i webbläsaren och försök igen."); return; }
-  const ac = audioCtx(), src = ac.createMediaStreamSource(stream), proc = ac.createScriptProcessor(4096, 1, 1), mute = ac.createGain();
+  if (ac.state === "suspended") { try { await ac.resume(); } catch {} }
+  const src = ac.createMediaStreamSource(stream), proc = ac.createScriptProcessor(4096, 1, 1), mute = ac.createGain();
   mute.gain.value = 0; src.connect(proc); proc.connect(mute); mute.connect(ac.destination);
   R.chunks = []; R.total = 0; R.mark = 0; R.rate = ac.sampleRate; R.mic = { stream, src, proc, mute };
   proc.onaudioprocess = e => {
@@ -770,7 +813,7 @@ function resetStage() {
 }
 function setPlayIcon(p) { $("icoPlay").toggleAttribute("hidden", p); $("icoPause").toggleAttribute("hidden", !p); $("playBtn").setAttribute("aria-label", p ? "Pausa" : q ? "Fortsätt" : "Starta"); }
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
-$("playBtn").onclick = () => { try { audioCtx(); } catch {} if (!q) startQuiz(); else if (q.phase === "paused") resumeQuiz(); else pauseQuiz(); };
+$("playBtn").onclick = () => { unlockAudio(); try { audioCtx(); } catch {} if (!q) startQuiz(); else if (q.phase === "paused") resumeQuiz(); else pauseQuiz(); };
 function startQuiz() {
   const words = wordsOf(week.id); if (!words.length) return;
   if (!kid) toast("Ingen är vald, så resultatet sparas inte. Lägg till ett barn på startsidan.");
