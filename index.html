@@ -216,8 +216,19 @@ button.trow:hover{background:var(--hover)}
 .bmore{width:100%;padding:14px;color:var(--blue)}
 .bbar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:10px 20px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;align-items:center;justify-content:center;z-index:5}
 .bbar span{color:var(--muted);font-size:.9rem;margin-right:auto;max-width:560px}
+.intro{display:flex;gap:10px;align-items:center;background:#f7f7f5;border-radius:6px;padding:12px 14px;margin-top:18px}
+.intro p{margin:0;flex:1;font-size:.92rem}
+.hint{color:var(--muted);font-size:.88rem;margin:8px 0 0}
+.steps{counter-reset:s;list-style:none;padding:0;margin:10px 0 0}
+.steps li{counter-increment:s;position:relative;padding:12px 0 12px 40px;border-bottom:1px solid var(--line)}
+.steps li::before{content:counter(s);position:absolute;left:0;top:12px;width:26px;height:26px;border-radius:50%;background:var(--text);color:#fff;display:grid;place-items:center;font-size:.85rem;font-weight:500}
+.steps b{font-weight:600}
+.steps p{margin:4px 0 0;font-size:.95rem;line-height:1.55}
+.footlink{color:var(--muted);font-size:.85rem;text-decoration:underline;text-underline-offset:3px;padding:6px 0}
+.dangerbox{border:1px solid rgba(224,62,62,.25);border-radius:6px;padding:14px;margin-top:8px;display:flex;flex-direction:column;gap:10px}
+.dangerbox input{border:1px solid var(--line);border-radius:6px;padding:8px 10px;outline:none}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-.mode{font-size:.8rem;color:var(--faint);padding:24px 0 100px}
+.mode{font-size:.8rem;color:var(--faint);padding:24px 0 0}
 @media (prefers-reduced-motion: reduce){.caret,.recdot::before{animation:none}}
 </style>
 </head>
@@ -227,7 +238,8 @@ button.trow:hover{background:var(--hover)}
 <main id="v-auth" class="view" hidden>
   <form class="auth" id="authForm">
     <div class="h1" style="margin:0">Veckans ord</div>
-    <p class="sub" id="authSub">Logga in med familjens konto.</p>
+    <p style="margin:0;font-size:.98rem;line-height:1.55">Öva stavning hemma. Appen läser upp ett ord, barnet skriver det och får direkt veta om det blev rätt. Ord som blir fel kommer tillbaka tills de sitter.</p>
+    <p class="sub" id="authSub"><b>Ett konto per familj.</b> En vuxen skapar kontot och loggar sedan in med samma e-post och lösenord på barnens telefoner och surfplattor. Barnen läggs till med namn efter inloggningen.</p>
     <label class="field"><span class="label">E-post</span><input id="authEmail" type="email" autocomplete="username" required></label>
     <label class="field"><span class="label">Lösenord</span><input id="authPw" type="password" autocomplete="current-password" minlength="6" required></label>
     <button class="btn primary big" type="submit" id="authBtn">Logga in</button>
@@ -246,14 +258,17 @@ button.trow:hover{background:var(--hover)}
     <button class="ghost" id="toSettings" type="button" aria-label="Inställningar"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
   </div>
   <div class="h1">Veckans ord</div>
-  <p class="sub">Vem övar?</p>
+  <div class="intro" id="introCard" hidden><p><b style="font-weight:600">Ny här?</b> Läs hur appen fungerar, det tar en minut.</p><button class="btn" id="introOpen" type="button">Visa</button><button class="ghost" id="introClose" type="button" aria-label="Dölj">×</button></div>
+  <p class="sub" style="margin-top:14px">Vem övar?</p>
   <div class="kids" id="kids"></div>
+  <p class="hint" id="kidHint" hidden>Lägg till barnen som ska öva. Hela familjen använder samma inloggning, men varje barn får egna resultat.</p>
   <form class="inline" id="kidForm" hidden>
     <input id="kidName" maxlength="24" placeholder="Namn" autocomplete="off" autocorrect="off" spellcheck="false">
     <button class="btn" type="submit">Lägg till</button>
   </form>
   <div class="table" id="weekList"></div>
   <div class="mode" id="modeNote"></div>
+  <div style="padding:0 0 110px"><button class="footlink" id="helpLink" type="button">Så fungerar appen</button></div>
   <button class="fab" id="addWeek" type="button" aria-label="Ny vecka"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
 </main>
 
@@ -267,8 +282,8 @@ button.trow:hover{background:var(--hover)}
   </div>
   <input class="titleIn" id="titleIn" maxlength="40" placeholder="Vecka x" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Veckans namn">
   <div class="callout" id="photoCallout">
-    <p>Har du fått en lapp från skolan? Fota den så läser appen in orden.</p>
-    <button class="btn" id="photoBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Fota eller välj bild</button>
+    <p>Har du ordlistan på papper, till exempel från skolan? Fotografera den så läser appen in orden. Du kan också skriva orden själv, ett per rad, eller välja dem under Alla ord.</p>
+    <button class="btn" id="photoBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Fotografera ordlista</button>
     <div class="ocr" id="ocrStatus" hidden><span id="ocrText"></span><div class="bar2"><i id="ocrBar" style="width:0"></i></div></div>
   </div>
   <div class="callout">
@@ -298,7 +313,7 @@ button.trow:hover{background:var(--hover)}
   <div class="bar">
     <button class="ghost dark" id="weekBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg><span id="weekHead"></span></button>
     <span class="grow"></span>
-    <button class="ghost" id="weekEdit" type="button">Ändra</button>
+    <button class="ghost" id="weekEdit" type="button">Ändra ord</button>
   </div>
   <div class="stage">
     <span class="qcount" id="qcount"></span>
@@ -332,13 +347,38 @@ button.trow:hover{background:var(--hover)}
   <div id="statBody"></div>
 </main>
 
+<!-- HELP -->
+<main id="v-help" class="view" hidden>
+  <div class="bar">
+    <button class="ghost dark" id="helpBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Tillbaka</button>
+  </div>
+  <div class="about">
+    <div class="h1">Så fungerar appen</div>
+    <p>Veckans ord hjälper barn att öva stavning hemma. Appen läser upp ett ord, barnet skriver det och får direkt veta om det blev rätt. Ord som blir fel kommer tillbaka i slutet tills de sitter.</p>
+    <ol class="steps">
+      <li><b>Ett konto per familj</b><p>En vuxen skapar kontot. Logga sedan in med samma e-post och lösenord på alla telefoner och surfplattor i familjen, så syns samma veckor och resultat överallt. Tips: välj Dela → Lägg till på hemskärmen i Safari, så öppnas appen som en vanlig app.</p></li>
+      <li><b>Lägg till barnen</b><p>Under ”Vem övar?” lägger du till ett namn per barn, gärna ett smeknamn. Barnen delar inloggningen men får egna resultat. Välj rätt namn innan barnet börjar öva.</p></li>
+      <li><b>Lägg in orden</b><p>Tryck på + nere till höger. Det finns tre sätt: skriv orden själv, ett per rad; fotografera en ordlista på papper, till exempel veckans läxa från skolan, så läser appen in orden; eller välj ord under <b>Alla ord</b> om ni inte har någon läxa. Ge veckan ett namn och tryck Spara.</p></li>
+      <li><b>Uppläsning och bild</b><p>De flesta ord läses upp av en datorröst. Vill du att barnet hör din röst kan du spela in orden själv. Ord som låter likadant, som bygd och byggd, läses med en kort mening så att barnet förstår vilket ord som menas. Du kan också lägga till en emoji eller ett foto till varje ord.</p></li>
+      <li><b>Öva</b><p>Barnet väljer sitt namn, öppnar veckan och trycker på play. Ordet läses upp, barnet skriver med appens tangentbord och trycker Klar. Grönt streck betyder rätt. Rött streck betyder fel, och då visas rätt stavning. ”Lyssna igen” spelar ordet en gång till och ”Vad betyder det?” förklarar ordet.</p></li>
+      <li><b>Följ upp</b><p>Under Statistik ser du för varje barn hur det går och vilka ord som är svårast. Överst i veckolistan dyker barnets svåraste ord upp som ett eget test när det finns några.</p></li>
+    </ol>
+    <div class="h2">Bra att veta</div>
+    <ul>
+      <li>Låter ett ord konstigt eller är förklaringen fel? Tryck på Ändra ord, sedan på röstknappen vid ordet och välj Flagga ordet.</li>
+      <li>Under Inställningar kan du logga ut, ta bort barn (via Statistik) eller ta bort hela kontot.</li>
+      <li>Mer om källor, datorrösten och villkor finns under Inställningar → Om appen.</li>
+    </ul>
+  </div>
+</main>
+
 <!-- WORD BANK -->
 <main id="v-bank" class="view" hidden>
   <div class="bar">
     <button class="ghost dark" id="bankBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Veckans ord</button>
   </div>
   <div class="h1">Alla ord</div>
-  <p class="sub">Markera ord och gör en egen vecka av dem. Tryck på ▶ för att lyssna.</p>
+  <p class="sub">Alla ord som har färdig uppläsning. Använd dem när ni inte har någon läxa, eller för att öva extra. Tryck på ett ord för att markera det, tryck på ▶ för att lyssna, och gör en egen vecka av de markerade orden. Nivån (A1–C2) förklaras under Inställningar → Om appen.</p>
   <input class="bsearch" id="bankSearch" type="search" placeholder="Sök ord" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Sök ord">
   <div class="bfilters" id="bankFilters"></div>
   <div class="bcount"><span id="bankCount"></span><span><button class="ghost" id="bankRandom" type="button">Slumpa 12</button></span></div>
@@ -353,7 +393,7 @@ button.trow:hover{background:var(--hover)}
     <button class="ghost dark" id="setBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Veckans ord</button>
   </div>
   <div class="h1">Inställningar</div>
-  <div style="margin-top:14px"><button class="btn" id="toAbout" type="button">Om appen, källor och villkor</button></div>
+  <div class="row2" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="toHelp" type="button">Så fungerar appen</button><button class="btn" id="toAbout" type="button">Om appen, källor och villkor</button></div>
   <div class="h2">Uppläsning</div>
   <p class="sub">Orden läses i första hand med din egen inspelning, i andra hand med datorrösten Mattias från Microsoft Azure och sist med telefonens egen röst.</p>
   <div class="h2">Telefonens röst</div>
@@ -362,7 +402,16 @@ button.trow:hover{background:var(--hover)}
   <div style="margin-top:12px"><button class="btn" id="voiceTest" type="button">Testa rösten</button></div>
   <div class="h2">Konto</div>
   <p class="sub" id="acct"></p>
-  <div style="margin:12px 0 30px"><button class="btn" id="logout" type="button">Logga ut</button></div>
+  <div style="margin:12px 0 0"><button class="btn" id="logout" type="button">Logga ut</button></div>
+  <div id="deleteBox">
+    <div class="h2">Ta bort kontot</div>
+    <div class="dangerbox">
+      <p class="sub" style="margin:0">Kontot och allt familjens innehåll raderas för gott: veckor, ord, bilder, inspelningar, barn och resultat. Det gäller på alla enheter som använder kontot och kan inte ångras.</p>
+      <label class="field"><span class="label">Skriv RADERA för att bekräfta</span><input id="deleteConfirm" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+      <div><button class="btn" id="deleteAccount" type="button" style="color:var(--red);border-color:rgba(224,62,62,.4)" disabled>Ta bort kontot</button></div>
+    </div>
+  </div>
+  <div style="height:30px"></div>
   <div id="adminBox" hidden>
     <div class="h2">Flaggade ord</div>
     <p class="sub">Bara du ser den här listan. Markera som hanterad när ordet är rättat.</p>
@@ -394,10 +443,20 @@ button.trow:hover{background:var(--hover)}
     <p>Ord som finns i båda räknas en gång. Svordomar och skällsord är borttagna, och vanliga skolord som saknades har lagts till. Egennamn är inte med. Ord som inte finns i ordbanken går ändå att lägga in. De läses då med telefonens röst eller med din inspelning.</p>
     <p class="fine">Språkbankens data används under licensen <a href="https://creativecommons.org/licenses/by/4.0/deed.sv" target="_blank" rel="noopener">CC BY 4.0</a>. Källa: Språkbanken Text, Göteborgs universitet.</p>
 
+    <div class="h2">Vanliga, mindre vanliga och ovanliga ord</div>
+    <p>I Alla ord kan du filtrera på hur vanliga orden är. Indelningen bygger på Kelly-listans nivåer, som följer den <a href="https://www.coe.int/en/web/common-european-framework-reference-languages/level-descriptions" target="_blank" rel="noopener">gemensamma europeiska referensramen för språk</a> (CEFR, på svenska GERS) från Europarådet:</p>
+    <ul>
+      <li><b>Vanliga</b> = nivå A1–A2 (nybörjare)</li>
+      <li><b>Mindre vanliga</b> = nivå B1–B2 (självständig språkanvändare)</li>
+      <li><b>Ovanliga</b> = nivå C1–C2 (avancerad) och ord som saknar nivå</li>
+    </ul>
+    <p>Referensramen beskriver hur väl någon kan ett språk, från A1 (förstår enkla vardagliga fraser) till C2 (förstår nästan allt). Den innehåller inga ordlistor. I Kelly-listan sorterade Språkbanken de vanligaste orden i en stor samling svenska webbtexter efter hur ofta de förekommer och delade in dem i sex ungefär lika stora nivåer, med vissa justeringar för hand. Nivån säger alltså främst <b>hur vanligt</b> ett ord är i vuxnas texter, inte hur svårt det är att stava. Listan är gjord för vuxna som lär sig svenska.</p>
+    <p class="fine">Böjningsformer får grundformens nivå, så ”fällde” räknas som ”fälla”. Ord från barnböckerna vars grundform inte finns i Kelly saknar nivå. Nivån visas i liten grå text bredvid varje ord.</p>
+
     <div class="h2">Förklaringar och meningar</div>
     <p>Ord som är lätta att blanda ihop, till exempel bygd och byggd, har en kort mening som läses upp. Många ord har också en förklaring under ”Vad betyder det?”. Meningarna och förklaringarna är skrivna med hjälp av AI (Claude från Anthropic) och har bara granskats stickprovsvis. De kan innehålla fel. Flagga gärna det som blivit fel.</p>
 
-    <div class="h2">Fotografera lappen</div>
+    <div class="h2">Fotografera en ordlista</div>
     <p>Textigenkänningen görs med <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">Tesseract.js</a> direkt i din webbläsare. Bilden skickas inte till någon server. Första gången hämtas språkdata för svenska (cirka 10 MB).</p>
 
     <div class="h2">Dina uppgifter</div>
@@ -440,7 +499,7 @@ const imgTag = u => typeof u === "string" && /^data:image\/(jpeg|png|webp|gif);b
 const LS = { get(k, d = null) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 let toastT;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2500 + msg.length * 45); }
-const VIEWS = ["auth", "home", "edit", "rec", "week", "stats", "settings", "about", "bank"];
+const VIEWS = ["auth", "home", "edit", "rec", "week", "stats", "settings", "about", "bank", "help"];
 function show(v) { for (const x of VIEWS) $("v-" + x).hidden = x !== v; scrollTo(0, 0); }
 const ICON = {
   pic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m21 17-5-5-9 8"/></svg>',
@@ -559,7 +618,9 @@ $("authToggle").onclick = () => {
   signUpMode = !signUpMode;
   $("authBtn").textContent = signUpMode ? "Skapa konto" : "Logga in";
   $("authToggle").textContent = signUpMode ? "Har redan konto? Logga in" : "Första gången? Skapa konto";
-  $("authSub").textContent = signUpMode ? "Skapa familjens konto. Logga sedan in med samma konto på barnens telefoner." : "Logga in med familjens konto.";
+  $("authSub").innerHTML = signUpMode
+    ? "<b>Skapa ett konto för hela familjen.</b> Använd en vuxens e-post. Efteråt lägger du till barnen med namn, och loggar in med samma uppgifter på alla enheter."
+    : "<b>Ett konto per familj.</b> En vuxen skapar kontot och loggar sedan in med samma e-post och lösenord på barnens telefoner och surfplattor. Barnen läggs till med namn efter inloggningen.";
   $("authPw").autocomplete = signUpMode ? "new-password" : "current-password";
   $("authMsg").textContent = "";
 };
@@ -610,6 +671,8 @@ function kidChips(el, selected, withAdd) {
 function renderHome() {
   show("home");
   kidChips($("kids"), kid, true);
+  $("kidHint").hidden = S.kids.length > 0;
+  $("introCard").hidden = !!LS.get("vo:introDone");
   const weeks = [...S.weeks].sort((a, b) => a.position - b.position || (a.created_at < b.created_at ? -1 : 1));
   const hard = hardWords(kid), hs = kid ? hardSessions(kid) : [], hl = hs[hs.length - 1];
   const hardRow = hard.length >= HARD.minShow
@@ -618,7 +681,7 @@ function renderHome() {
     const ss = kid ? kidSessions(kid, w.id) : [], last = ss[ss.length - 1], n = wordsOf(w.id).length;
     const meta = last ? `${last.ok}/${last.words.length} · ${ss.length} ${ss.length === 1 ? "gång" : "gånger"}` : `${n} ord`;
     return `<button type="button" class="trow" data-week="${esc(w.id)}"><span class="name">${esc(w.name)}</span><span class="meta">${meta}</span></button>`;
-  }).join("") : `<div class="empty">Tryck på plus för att lägga till veckans ord.</div>`);
+  }).join("") : `<div class="empty">Inga veckor än. Tryck på + nere till höger för att lägga in ord, eller välj ord under Alla ord.</div>`);
   $("modeNote").textContent = sb ? "" : "Testläge: allt sparas bara i den här webbläsaren.";
 }
 $("kids").addEventListener("click", e => {
@@ -636,9 +699,31 @@ $("kidForm").addEventListener("submit", async e => {
 $("weekList").addEventListener("click", e => { const b = e.target.closest("[data-week]"); if (b) openWeek(b.dataset.week); });
 $("addWeek").onclick = () => openEdit(null);
 $("toBank").onclick = () => openBank();
+let helpFrom = "home";
+function openHelp(from) { helpFrom = from; LS.set("vo:introDone", true); show("help"); }
+$("introOpen").onclick = () => openHelp("home");
+$("introClose").onclick = () => { LS.set("vo:introDone", true); $("introCard").hidden = true; };
+$("helpLink").onclick = () => openHelp("home");
+$("helpBack").onclick = () => { if (helpFrom === "settings") { renderSettings(); show("settings"); } else renderHome(); };
 $("toStats").onclick = () => { statKid = kid; delKidArmed = false; renderStats(); show("stats"); };
 $("toSettings").onclick = () => { renderSettings(); show("settings"); };
 $("toAbout").onclick = () => show("about");
+$("toHelp").onclick = () => openHelp("settings");
+$("deleteConfirm").addEventListener("input", e => { $("deleteAccount").disabled = e.target.value.trim().toUpperCase() !== "RADERA"; });
+$("deleteAccount").onclick = () => busy($("deleteAccount"), "Tar bort …", async () => {
+  try {
+    if (sb) {
+      const { error } = await timed(sb.rpc("delete_my_account"));
+      if (error) throw error;
+      try { await sb.auth.signOut(); } catch {}
+    } else {
+      for (const t of ["weeks", "words", "media", "kids", "sessions", "flaggor"]) LOCAL.put(t, []);
+    }
+    for (const k of ["vo:kid", "vo:introDone"]) { try { localStorage.removeItem(k); } catch {} }
+    alert("Kontot och allt innehåll är borttaget.");
+    location.reload();
+  } catch (e) { console.error(e); toast("Kunde inte ta bort kontot. Försök igen eller kontakta den som delade appen med dig."); }
+});
 $("aboutBack").onclick = () => { renderSettings(); show("settings"); };
 $("setBack").onclick = renderHome;
 $("statsBack").onclick = renderHome;
@@ -1193,7 +1278,7 @@ function renderSettings() {
   $("vlist").innerHTML = sv.length ? sv.map((v, i) => `<label><input type="radio" name="v" value="${i}" ${voice === v ? "checked" : ""}>${esc(v.name)}<small>${esc(v.lang)}</small></label>`).join("")
     : `<p class="sub" style="padding:10px 4px">Ingen svensk datorröst hittades på den här enheten. Spela in orden med din röst, eller installera en svensk röst (iPhone: Inställningar → Hjälpmedel → Uppläst innehåll → Röster → Svenska).</p>`;
   $("vlist").onchange = e => { voice = sv[+e.target.value]; LS.set("vo:voice", voice.voiceURI); tts("Hej! Nu ska vi öva stavning."); };
-  $("acct").textContent = sb ? `Inloggad som ${user?.email || ""}. Resultat och inspelningar synkas mellan alla enheter som är inloggade med samma konto.` : "Testläge utan konto. Allt sparas bara i den här webbläsaren.";
+  $("acct").textContent = sb ? `Inloggad som ${user?.email || ""}. Det här är familjens konto: logga in med samma uppgifter på alla enheter i familjen, så synkas veckor, inspelningar och resultat. Varje barn läggs till med eget namn på startsidan.` : "Testläge utan konto. Allt sparas bara i den här webbläsaren.";
   $("logout").hidden = !sb;
   renderFlags();
 }
@@ -1222,7 +1307,8 @@ async function renderFlags() {
 $("voiceTest").onclick = () => tts("Hej! Nu ska vi öva stavning.");
 
 /* ===================== all words (word bank browser) ===================== */
-const BANK_FILTERS = [["alla", "Alla"], ["A1", "A1"], ["A2", "A2"], ["B1", "B1"], ["B2+", "B2 och svårare"], ["lika", "Lätta att blanda ihop"]];
+const BANK_FILTERS = [["alla", "Alla"], ["vanliga", "Vanliga"], ["mindre", "Mindre vanliga"], ["ovanliga", "Ovanliga"], ["lika", "Lätta att blanda ihop"]];
+const LEVEL_GROUP = lv => lv === "A1" || lv === "A2" ? "vanliga" : lv === "B1" || lv === "B2" ? "mindre" : "ovanliga";
 const bankUI = { filter: "alla", q: "", shown: 200, sel: new Set(), list: [] };
 async function openBank() {
   show("bank");
@@ -1237,7 +1323,7 @@ function filterBank() {
   for (const [w, e] of Object.entries(BANK.words)) {
     if (q && !w.startsWith(q)) continue;
     const lv = e[3] || "";
-    if (f === "lika" ? !e[4] : f === "B2+" ? !["B2", "C1", "C2"].includes(lv) : f !== "alla" && lv !== f) continue;
+    if (f === "lika" ? !e[4] : f !== "alla" && LEVEL_GROUP(lv) !== f) continue;
     out.push(w);
   }
   if (q) out.sort((a, b) => a.length - b.length || a.localeCompare(b, "sv"));
