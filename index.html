@@ -650,15 +650,22 @@ $("imgFile").onchange = async e => {
 };
 $("addRow").onclick = () => { draft.push(blank()); popFor = null; renderRows(); $("rows").querySelector(`input[data-i="${draft.length - 1}"]`)?.focus(); };
 
+/* Only one save at a time: a second tap while saving waits for the first instead of creating another week */
+let saveInFlight = null;
+function saveDraft() {
+  if (!saveInFlight) saveInFlight = doSaveDraft().finally(() => { saveInFlight = null; });
+  return saveInFlight;
+}
 /* Saves the week, its words and changed pictures. Returns false if nothing to save. */
-async function saveDraft() {
+async function doSaveDraft() {
   const seen = new Set();
   const keep = draft.filter(w => { const k = norm(w.word); if (!k || seen.has(k)) { if (!w._new) removed.push(w.id); return false; } seen.add(k); return true; });
   if (!keep.length) { toast("Skriv minst ett ord."); return false; }
   const name = $("titleIn").value.trim() || nextFreeName();
   const clash = S.weeks.find(w => w !== editWeek && norm(w.name) === norm(name));
   if (clash) { toast(`Det finns redan en vecka som heter ”${clash.name}”. Välj ett annat namn.`); $("titleIn").focus(); return false; }
-  const week = editWeek || { id: uuid(), position: S.weeks.length };
+  const week = editWeek || { id: uuid(), position: S.weeks.length, name, _pending: true };
+  if (!editWeek) editWeek = week;   // later saves update this week instead of creating a new one
   try {
     await api.upsert("weeks", { id: week.id, name, position: week.position ?? 0 });
     const rows = keep.map((w, i) => ({ id: w.id, week_id: week.id, position: i, word: w.word.normalize("NFC").trim(), emoji: w.emoji || "" }));
@@ -667,7 +674,7 @@ async function saveDraft() {
     if (imgs.length) await api.upsert("media", imgs, "word_id");
     if (removed.length) { await api.remove("media", removed, "word_id"); await api.remove("words", removed); }
     week.name = name;
-    if (!editWeek) { S.weeks.push(week); editWeek = week; $("delWeek").hidden = false; }
+    if (week._pending) { delete week._pending; S.weeks.push(week); $("delWeek").hidden = false; }
     $("titleIn").value = name; $("editMode").textContent = "Ändrar " + name;
     S.words = S.words.filter(w => w.week_id !== week.id).concat(rows);
     draft = rows.map(r => ({ ...r })); removed = [];
@@ -681,7 +688,7 @@ async function busy(btn, label, fn) {
   try { return await fn(); } finally { btn.disabled = false; btn.innerHTML = old; }
 }
 $("editDone").onclick = () => busy($("editDone"), "Sparar …", async () => {
-  const isNew = !editWeek;
+  const isNew = !editWeek || !!editWeek._pending;
   if (await saveDraft()) { if (isNew) renderHome(); else openWeek(editWeek.id); }
 });
 $("editBack").onclick = () => { popFor = null; if (editWeek) openWeek(editWeek.id); else renderHome(); };
