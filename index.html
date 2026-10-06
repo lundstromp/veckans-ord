@@ -10,11 +10,11 @@
 <script>
 /* Fyll i från Supabase → Project Settings → API. Tomt = testläge (sparas bara i den här webbläsaren). */
 const CONFIG = {
-  url: "",
-  key: "",
+  url: "https://evyuyizhcazxbbdddysa.supabase.co",
+  key: "sb_publishable_zxqLEQsqX7nfT0w9_2C0fg_bb-66S1P",
 };
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
 <style>
 /* Notion-like: white page, warm-black text, hairline rules, light weights. */
 :root{
@@ -375,7 +375,7 @@ $("authForm").addEventListener("submit", async e => {
   $("authBtn").disabled = true; $("authMsg").className = "msg"; $("authMsg").textContent = "";
   try {
     if (signUpMode) {
-      const { data, error } = await sb.auth.signUp({ email, password });
+      const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } });
       if (error) throw error;
       if (!data.session) { $("authMsg").textContent = "Kontot är skapat. Öppna mejlet från Supabase och bekräfta, logga sedan in här."; signUpMode = true; $("authToggle").click(); return; }
       user = data.session.user;
