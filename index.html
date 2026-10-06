@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Veckans ord">
+<meta name="theme-color" content="#ffffff">
+<title>Veckans ord</title>
+<script>
+/* Fyll i från Supabase → Project Settings → API. Tomt = testläge (sparas bara i den här webbläsaren). */
+const CONFIG = {
+  url: "",
+  key: "",
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+/* Notion-like: white page, warm-black text, hairline rules, light weights. */
+:root{
+  --bg:#ffffff; --text:#37352f; --muted:rgba(55,53,47,.6); --faint:rgba(55,53,47,.38);
+  --line:rgba(55,53,47,.09); --hover:rgba(55,53,47,.06); --press:rgba(55,53,47,.12); --key:#f7f7f5;
+  --blue:#2383e2; --red:#e03e3e; --green:#448361; --redbg:rgba(224,62,62,.07); --greenbg:rgba(68,131,97,.08);
+  --font:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);font-size:16px;line-height:1.5;font-weight:400;-webkit-font-smoothing:antialiased;padding-top:env(safe-area-inset-top,0px)}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;touch-action:manipulation}
+input{font:inherit;color:var(--text);background:transparent}
+button:focus-visible,input:focus-visible{outline:2px solid rgba(35,131,226,.5);outline-offset:2px;border-radius:4px}
+.view{min-height:100%;max-width:640px;margin:0 auto;padding-inline:20px;display:flex;flex-direction:column}
+
+/* bars & buttons */
+.bar{display:flex;align-items:center;gap:6px;min-height:52px}
+.bar .grow{flex:1;min-width:0}
+.crumb{color:var(--muted);font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ghost{padding:6px 10px;border-radius:6px;color:var(--muted);font-size:.92rem;display:inline-flex;align-items:center;gap:6px}
+.ghost:hover{background:var(--hover)} .ghost:active{background:var(--press)}
+.ghost svg{width:18px;height:18px}
+.ghost.dark{color:var(--text)}
+.btn{padding:9px 16px;border-radius:6px;font-weight:500;font-size:.95rem;border:1px solid var(--line);display:inline-flex;align-items:center;gap:8px;justify-content:center}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.primary:hover{background:#0f73d4}
+.btn.big{padding:13px 22px;font-size:1.05rem}
+.btn:disabled{opacity:.5}
+.btn svg{width:18px;height:18px}
+.danger{color:var(--red)}
+.h1{font-size:2.1rem;font-weight:600;letter-spacing:-.01em;line-height:1.2;margin:28px 0 6px}
+.sub{color:var(--muted);font-size:.92rem;margin:0}
+.label{font-size:.78rem;color:var(--faint);font-weight:500}
+
+/* kids */
+.kids{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:18px}
+.kid{padding:4px 12px;border-radius:999px;background:var(--hover);font-size:.92rem}
+.kid[aria-pressed="true"]{background:var(--text);color:#fff}
+.kid.add{background:none;color:var(--faint)}
+.inline{display:flex;gap:8px;margin-top:10px}
+.inline input{flex:1;min-width:0;border:0;border-bottom:1px solid var(--line);padding:6px 0;outline:none}
+.inline input:focus{border-bottom-color:var(--text)}
+
+/* table list */
+.table{margin-top:22px;border-top:1px solid var(--line)}
+.trow{display:flex;align-items:center;gap:12px;width:100%;padding:12px 6px;border-bottom:1px solid var(--line);text-align:left;border-radius:0}
+button.trow:hover{background:var(--hover)}
+.trow .name{flex:1;min-width:0;font-size:1.05rem}
+.trow .meta{color:var(--muted);font-size:.88rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.empty{color:var(--faint);padding:28px 6px;font-size:.95rem}
+.fab{position:fixed;right:max(20px,calc(50% - 300px));bottom:calc(24px + env(safe-area-inset-bottom,0px));width:56px;height:56px;border-radius:50%;background:var(--text);color:#fff;display:grid;place-items:center;box-shadow:0 2px 10px rgba(15,15,15,.15)}
+.fab svg{width:24px;height:24px}
+
+/* edit */
+.titleIn{font-size:2.1rem;font-weight:600;border:0;outline:none;padding:0;margin:20px 0 4px;width:100%;letter-spacing:-.01em}
+.titleIn::placeholder{color:var(--faint)}
+.callout{display:flex;gap:12px;align-items:center;background:#f7f7f5;border-radius:6px;padding:14px 16px;margin-top:18px;flex-wrap:wrap}
+.callout p{margin:0;flex:1;min-width:200px;color:var(--muted);font-size:.9rem}
+.thead{display:grid;grid-template-columns:minmax(0,1fr) 56px 56px 32px;gap:6px;margin-top:24px;padding:0 4px 6px;border-bottom:1px solid var(--line)}
+.wrow{display:grid;grid-template-columns:minmax(0,1fr) 56px 56px 32px;gap:6px;align-items:center;padding:2px 4px;border-bottom:1px solid var(--line)}
+.wrow input{border:0;outline:none;font-size:1.05rem;padding:10px 0;width:100%}
+.cell{height:40px;border-radius:6px;display:grid;place-items:center;font-size:1.4rem;color:var(--faint);overflow:hidden}
+.cell:hover{background:var(--hover)}
+.cell img{width:34px;height:34px;object-fit:cover;border-radius:4px}
+.cell svg{width:18px;height:18px}
+.cell.on{color:var(--text)}
+.cell.rec{color:var(--red)}
+.x{height:32px;border-radius:6px;display:grid;place-items:center;color:var(--faint)}
+.x:hover{background:var(--hover)} .x svg{width:14px;height:14px}
+.pop{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 4px 12px;border-bottom:1px solid var(--line);background:#fbfbfa}
+.pop input{width:70px;border:0;border-bottom:1px solid var(--text);text-align:center;font-size:1.3rem;outline:none;padding:2px 0}
+.addrow{color:var(--faint);padding:10px 4px;text-align:left;width:100%;border-radius:6px}
+.addrow:hover{background:var(--hover)}
+
+/* recorder */
+.studio{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding-block:10px 24px}
+.studio .count{color:var(--muted);font-size:.9rem;font-variant-numeric:tabular-nums}
+.studio .pic{font-size:72px;line-height:1;min-height:80px;display:grid;place-items:center}
+.studio .pic img{max-height:110px;max-width:180px;border-radius:8px}
+.prompt{font-size:3.2rem;font-weight:500;letter-spacing:.01em;line-height:1.1;word-break:break-word}
+.next{color:var(--faint);font-size:.95rem;min-height:1.5em}
+.meter{width:min(280px,70%);height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--red);transition:width .08s linear}
+.recdot{display:inline-flex;align-items:center;gap:8px;color:var(--red);font-size:.88rem}
+.recdot::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+.sbtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;width:100%}
+.sbtns .btn.big{min-width:150px}
+.review{width:100%;text-align:left;border-top:1px solid var(--line)}
+.rrow{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line)}
+.rrow b{flex:1;font-weight:400;font-size:1.05rem}
+.rrow .miss{color:var(--red);font-size:.85rem}
+
+/* quiz */
+.stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding-block:6px}
+.qcount{color:var(--muted);font-size:.9rem;font-variant-numeric:tabular-nums;min-height:1.4em}
+.qpic{height:110px;display:grid;place-items:center;font-size:76px;line-height:1}
+.qpic img{max-height:110px;max-width:190px;border-radius:8px;object-fit:contain}
+.play{width:72px;height:72px;border-radius:50%;background:var(--text);color:#fff;display:grid;place-items:center;flex:none}
+.play svg{width:30px;height:30px}
+.writing{width:100%;display:flex;flex-direction:column;align-items:center;gap:6px}
+.typed{font-size:2.4rem;font-weight:300;letter-spacing:.05em;min-height:3.3rem;line-height:3.3rem;text-align:center;word-break:break-all}
+.typed.right{color:var(--green)} .typed.wrong{color:var(--red);text-decoration:line-through;text-decoration-thickness:1px}
+.caret{display:inline-block;width:1px;height:2.3rem;background:var(--text);vertical-align:-.35rem;margin-left:2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.line{width:100%;height:1px;background:var(--text)}
+.line.right{background:var(--green);height:2px} .line.wrong{background:var(--red);height:2px}
+.fix{font-size:1.7rem;font-weight:300;letter-spacing:.05em;min-height:2.4rem}
+.fix .x2{text-decoration:underline;text-decoration-color:var(--red);text-underline-offset:6px;text-decoration-thickness:2px}
+.again{color:var(--faint);font-size:.88rem;padding:4px 10px;border-radius:6px}
+.again:hover{background:var(--hover)}
+.done{text-align:center;display:flex;flex-direction:column;gap:2px}
+.done b{font-size:2rem;font-weight:500}
+.done span{color:var(--muted)}
+.kbd{display:flex;flex-direction:column;gap:6px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));user-select:none;-webkit-user-select:none;transition:opacity .15s}
+.kbd.off{opacity:.35;pointer-events:none}
+.krow{display:flex;gap:5px;justify-content:center}
+.kbd button{flex:1 1 0;min-width:0;max-width:46px;height:48px;border-radius:6px;background:var(--key);border:1px solid var(--line);font-size:1.2rem;font-weight:400}
+.kbd button:active{background:var(--press)}
+.kbd .wide{max-width:none;flex:1.6 1 0;font-size:1rem}
+.kbd .go{background:var(--text);color:#fff;border-color:var(--text);font-weight:500;font-size:1rem;max-width:none;flex:1 1 100%}
+
+/* stats */
+.stats3{display:flex;gap:32px;margin-top:20px;flex-wrap:wrap}
+.stats3 div{display:flex;flex-direction:column}
+.stats3 b{font-size:1.7rem;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.15}
+.stats3 span{color:var(--muted);font-size:.85rem}
+.h2{font-size:1.15rem;font-weight:600;margin:30px 0 6px}
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:10px 4px;border-bottom:1px solid var(--line);align-items:center}
+.srow .w{font-size:1.05rem}
+.srow .s{color:var(--muted);font-size:.85rem;grid-column:1}
+.srow .n{grid-column:2;grid-row:1 / span 2;font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem;text-align:right}
+.bar2{grid-column:1 / -1;height:2px;background:var(--line);border-radius:1px;overflow:hidden;margin-top:4px}
+.bar2 i{display:block;height:100%;background:var(--red)}
+
+/* auth & settings */
+.auth{max-width:360px;margin:12vh auto 0;width:100%;display:flex;flex-direction:column;gap:14px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field input{border:1px solid var(--line);border-radius:6px;padding:10px 12px;outline:none;background:#fff}
+.field input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(35,131,226,.15)}
+.msg{font-size:.9rem;color:var(--muted);margin:0}
+.msg.err{color:var(--red)}
+.link{color:var(--blue);font-size:.92rem;align-self:flex-start}
+.vlist{border-top:1px solid var(--line);margin-top:10px}
+.vlist label{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line)}
+.vlist small{color:var(--faint);margin-left:auto}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));background:#2f2f2f;color:#fff;padding:10px 14px;border-radius:6px;font-size:.9rem;max-width:calc(100% - 40px);z-index:9;box-shadow:0 4px 18px rgba(0,0,0,.15)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.mode{font-size:.8rem;color:var(--faint);padding:24px 0 100px}
+@media (prefers-reduced-motion: reduce){.caret,.recdot::before{animation:none}}
+</style>
+</head>
+<body>
+
+<!-- AUTH -->
+<main id="v-auth" class="view" hidden>
+  <form class="auth" id="authForm">
+    <div class="h1" style="margin:0">Veckans ord</div>
+    <p class="sub" id="authSub">Logga in med familjens konto.</p>
+    <label class="field"><span class="label">E-post</span><input id="authEmail" type="email" autocomplete="username" required></label>
+    <label class="field"><span class="label">Lösenord</span><input id="authPw" type="password" autocomplete="current-password" minlength="6" required></label>
+    <button class="btn primary big" type="submit" id="authBtn">Logga in</button>
+    <p class="msg" id="authMsg"></p>
+    <button class="link" type="button" id="authToggle">Första gången? Skapa konto</button>
+  </form>
+</main>
+
+<!-- HOME -->
+<main id="v-home" class="view" hidden>
+  <div class="bar">
+    <span class="grow"></span>
+    <button class="ghost" id="toStats" type="button">Statistik</button>
+    <button class="ghost" id="toSettings" type="button" aria-label="Inställningar"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
+  </div>
+  <div class="h1">Veckans ord</div>
+  <p class="sub">Vem övar?</p>
+  <div class="kids" id="kids"></div>
+  <form class="inline" id="kidForm" hidden>
+    <input id="kidName" maxlength="24" placeholder="Namn" autocomplete="off" autocorrect="off" spellcheck="false">
+    <button class="btn" type="submit">Lägg till</button>
+  </form>
+  <div class="table" id="weekList"></div>
+  <div class="mode" id="modeNote"></div>
+  <button class="fab" id="addWeek" type="button" aria-label="Ny vecka"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+</main>
+
+<!-- EDIT -->
+<main id="v-edit" class="view" hidden>
+  <div class="bar">
+    <button class="ghost dark" id="editBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Veckans ord</button>
+    <span class="grow"></span>
+    <button class="ghost dark" id="editDone" type="button">Klar</button>
+  </div>
+  <input class="titleIn" id="titleIn" maxlength="40" placeholder="Namnlös vecka" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Veckans namn">
+  <div class="callout">
+    <p>Spela in alla ord med din röst. Orden visas ett i taget, säg ordet och tryck <b>Nästa</b>.</p>
+    <button class="btn primary" id="recAll" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Spela in alla ord</button>
+  </div>
+  <div class="thead"><span class="label">Ord</span><span class="label" style="text-align:center">Bild</span><span class="label" style="text-align:center">Röst</span><span></span></div>
+  <div id="rows"></div>
+  <button class="addrow" id="addRow" type="button">+ Nytt ord</button>
+  <button class="ghost danger" id="delWeek" type="button" style="align-self:flex-start;margin:28px 0 60px;padding-left:4px" hidden>Ta bort veckan</button>
+  <input type="file" id="imgFile" accept="image/*" class="sr" tabindex="-1" aria-hidden="true">
+</main>
+
+<!-- RECORDER -->
+<main id="v-rec" class="view" hidden>
+  <div class="bar">
+    <button class="ghost dark" id="recClose" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>Avbryt</button>
+    <span class="grow"></span>
+    <span class="crumb" id="recCrumb"></span>
+  </div>
+  <div class="studio" id="studio"></div>
+</main>
+
+<!-- QUIZ -->
+<main id="v-week" class="view" hidden>
+  <div class="bar">
+    <button class="ghost dark" id="weekBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg><span id="weekHead"></span></button>
+    <span class="grow"></span>
+    <button class="ghost" id="weekEdit" type="button">Ändra</button>
+  </div>
+  <div class="stage">
+    <span class="qcount" id="qcount"></span>
+    <div class="qpic" id="qpic" hidden></div>
+    <button class="play" id="playBtn" type="button" aria-label="Starta">
+      <svg id="icoPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>
+      <svg id="icoPause" viewBox="0 0 24 24" fill="currentColor" hidden><rect x="6.5" y="5" width="3.6" height="14" rx="1"/><rect x="13.9" y="5" width="3.6" height="14" rx="1"/></svg>
+    </button>
+    <div class="writing">
+      <div class="done" id="done" hidden><b id="doneScore"></b><span>Tryck på play för att öva igen</span></div>
+      <div class="typed" id="typed" aria-live="polite"></div>
+      <div class="line" id="line"></div>
+      <div class="fix" id="fix"></div>
+      <button class="again" id="again" type="button" hidden>Lyssna igen</button>
+    </div>
+  </div>
+  <div class="kbd off" id="kbd"></div>
+</main>
+
+<!-- STATS -->
+<main id="v-stats" class="view" hidden>
+  <div class="bar">
+    <button class="ghost dark" id="statsBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Veckans ord</button>
+  </div>
+  <div class="h1">Statistik</div>
+  <div class="kids" id="statKids"></div>
+  <div id="statBody"></div>
+</main>
+
+<!-- SETTINGS -->
+<main id="v-settings" class="view" hidden>
+  <div class="bar">
+    <button class="ghost dark" id="setBack" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Veckans ord</button>
+  </div>
+  <div class="h1">Inställningar</div>
+  <div class="h2">Datorröst</div>
+  <p class="sub">Används för ord som saknar inspelning.</p>
+  <div class="vlist" id="vlist"></div>
+  <div style="margin-top:12px"><button class="btn" id="voiceTest" type="button">Testa rösten</button></div>
+  <div class="h2">Konto</div>
+  <p class="sub" id="acct"></p>
+  <div style="margin:12px 0 60px"><button class="btn" id="logout" type="button">Logga ut</button></div>
+</main>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* ===================== helpers ===================== */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const norm = s => s.normalize("NFC").trim().toLowerCase();
+const uuid = () => crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const LS = { get(k, d = null) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+let toastT;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2500 + msg.length * 45); }
+const VIEWS = ["auth", "home", "edit", "rec", "week", "stats", "settings"];
+function show(v) { for (const x of VIEWS) $("v-" + x).hidden = x !== v; scrollTo(0, 0); }
+const ICON = {
+  pic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m21 17-5-5-9 8"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>',
+  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+};
+
+/* ===================== data layer ===================== */
+let sb = null, user = null;
+const LOCAL = { get: t => LS.get("vo-local:" + t, []), put: (t, a) => LS.set("vo-local:" + t, a) };
+const api = {
+  async list(t, f = {}) {
+    if (sb) {
+      let q = sb.from(t).select(f.cols || "*");
+      if (f.in) q = q.in(f.in[0], f.in[1]);
+      const { data, error } = await q; if (error) throw error; return data;
+    }
+    let a = LOCAL.get(t); if (f.in) a = a.filter(r => f.in[1].includes(r[f.in[0]])); return a;
+  },
+  async upsert(t, rows, key = "id") {
+    rows = [].concat(rows); if (!rows.length) return;
+    if (sb) { const { error } = await sb.from(t).upsert(rows, { onConflict: key }); if (error) throw error; return; }
+    const a = LOCAL.get(t);
+    for (const r of rows) { const i = a.findIndex(x => x[key] === r[key]); if (i >= 0) a[i] = { ...a[i], ...r }; else a.push({ created_at: new Date().toISOString(), ...r }); }
+    LOCAL.put(t, a);
+  },
+  async remove(t, ids, key = "id") {
+    ids = [].concat(ids); if (!ids.length) return;
+    if (sb) { const { error } = await sb.from(t).delete().in(key, ids); if (error) throw error; return; }
+    LOCAL.put(t, LOCAL.get(t).filter(r => !ids.includes(r[key])));
+  },
+};
+async function safe(p, msg = "Kunde inte spara. Kontrollera internetanslutningen.") {
+  try { return await p; } catch (e) { console.error(e); toast(msg); throw e; }
+}
+
+/* ===================== state ===================== */
+const S = { weeks: [], words: [], kids: [], sessions: [] };
+const media = {};           // word_id -> {image, audio}
+let kid = LS.get("vo:kid");
+const wordsOf = weekId => S.words.filter(w => w.week_id === weekId).sort((a, b) => a.position - b.position);
+const kidSessions = (k, weekId) => S.sessions.filter(s => s.kid_id === k && (!weekId || s.week_id === weekId)).sort((a, b) => a.created_at < b.created_at ? -1 : 1);
+async function loadMedia(ids) {
+  const need = ids.filter(id => !(id in media));
+  if (!need.length) return;
+  const rows = await api.list("media", { in: ["word_id", need] });
+  for (const id of need) media[id] = null;
+  for (const r of rows) media[r.word_id] = { image: r.image || null, audio: r.audio || null };
+}
+
+const SEED = { name: "Vecka 2", words: [["bygd", "🏘️"], ["byggd", "🧱"], ["fält", "🌾"], ["fällt", "🪓"], ["rykte", "🗣️"], ["ryckte", "🪢"], ["släkt", "👨‍👩‍👧‍👦"], ["släckt", "💡"], ["smält", "🫠"], ["smällt", "💥"], ["tryckt", "👇"], ["tryggt", "🤗"]] };
+
+/* ===================== boot & auth ===================== */
+let signUpMode = false;
+async function boot() {
+  if (CONFIG.url && CONFIG.key && window.supabase) {
+    sb = window.supabase.createClient(CONFIG.url, CONFIG.key, { auth: { persistSession: true, autoRefreshToken: true } });
+    const { data } = await sb.auth.getSession();
+    if (!data.session) { show("auth"); return; }
+    user = data.session.user;
+  }
+  await afterLogin();
+}
+$("authToggle").onclick = () => {
+  signUpMode = !signUpMode;
+  $("authBtn").textContent = signUpMode ? "Skapa konto" : "Logga in";
+  $("authToggle").textContent = signUpMode ? "Har redan konto? Logga in" : "Första gången? Skapa konto";
+  $("authSub").textContent = signUpMode ? "Skapa familjens konto. Logga sedan in med samma konto på barnens telefoner." : "Logga in med familjens konto.";
+  $("authPw").autocomplete = signUpMode ? "new-password" : "current-password";
+  $("authMsg").textContent = "";
+};
+$("authForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const email = $("authEmail").value.trim(), password = $("authPw").value;
+  $("authBtn").disabled = true; $("authMsg").className = "msg"; $("authMsg").textContent = "";
+  try {
+    if (signUpMode) {
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if (error) throw error;
+      if (!data.session) { $("authMsg").textContent = "Kontot är skapat. Öppna mejlet från Supabase och bekräfta, logga sedan in här."; signUpMode = true; $("authToggle").click(); return; }
+      user = data.session.user;
+    } else {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      user = data.user;
+    }
+    await afterLogin();
+  } catch (err) {
+    $("authMsg").className = "msg err";
+    $("authMsg").textContent = /invalid login/i.test(err.message) ? "Fel e-post eller lösenord." : /not confirmed/i.test(err.message) ? "Bekräfta kontot via mejlet först." : err.message;
+  } finally { $("authBtn").disabled = false; }
+});
+$("logout").onclick = async () => { if (sb) await sb.auth.signOut(); location.reload(); };
+
+async function afterLogin() {
+  try {
+    [S.weeks, S.words, S.kids, S.sessions] = await Promise.all(["weeks", "words", "kids", "sessions"].map(t => api.list(t)));
+  } catch (e) { console.error(e); toast("Kunde inte hämta data. Har du kört schema.sql i Supabase?"); }
+  const seedKey = "vo:seeded:" + (user ? user.id : "local");
+  if (!S.weeks.length && !LS.get(seedKey)) {
+    const week = { id: uuid(), name: SEED.name, position: 0 };
+    const words = SEED.words.map(([w, e], i) => ({ id: uuid(), week_id: week.id, position: i, word: w, emoji: e }));
+    try { await api.upsert("weeks", week); await api.upsert("words", words); S.weeks.push(week); S.words.push(...words); LS.set(seedKey, true); } catch (e) { console.error(e); }
+  }
+  if (!S.kids.some(k => k.id === kid)) kid = S.kids[0]?.id || null;
+  renderHome();
+}
+
+/* ===================== home ===================== */
+function setKid(id) { kid = id; LS.set("vo:kid", id); }
+function kidChips(el, selected, withAdd) {
+  el.innerHTML = S.kids.map(k => `<button type="button" class="kid" data-kid="${k.id}" aria-pressed="${k.id === selected}">${esc(k.name)}</button>`).join("")
+    + (withAdd ? `<button type="button" class="kid add" data-kid="+">+ ${S.kids.length ? "Lägg till" : "Lägg till barn"}</button>` : "");
+}
+function renderHome() {
+  show("home");
+  kidChips($("kids"), kid, true);
+  const weeks = [...S.weeks].sort((a, b) => a.position - b.position || (a.created_at < b.created_at ? -1 : 1));
+  $("weekList").innerHTML = weeks.length ? weeks.map(w => {
+    const ss = kid ? kidSessions(kid, w.id) : [], last = ss[ss.length - 1], n = wordsOf(w.id).length;
+    const meta = last ? `${last.ok}/${last.words.length} · ${ss.length} ${ss.length === 1 ? "gång" : "gånger"}` : `${n} ord`;
+    return `<button type="button" class="trow" data-week="${w.id}"><span class="name">${esc(w.name)}</span><span class="meta">${meta}</span></button>`;
+  }).join("") : `<div class="empty">Tryck på plus för att lägga till veckans ord.</div>`;
+  $("modeNote").textContent = sb ? "" : "Testläge: allt sparas bara i den här webbläsaren.";
+}
+$("kids").addEventListener("click", e => {
+  const b = e.target.closest("[data-kid]"); if (!b) return;
+  if (b.dataset.kid === "+") { $("kidForm").hidden = !$("kidForm").hidden; if (!$("kidForm").hidden) $("kidName").focus(); return; }
+  setKid(b.dataset.kid); renderHome();
+});
+$("kidForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("kidName").value.trim(); if (!name) return;
+  const k = { id: uuid(), name };
+  await safe(api.upsert("kids", k));
+  S.kids.push(k); setKid(k.id); $("kidName").value = ""; $("kidForm").hidden = true; renderHome();
+});
+$("weekList").addEventListener("click", e => { const b = e.target.closest("[data-week]"); if (b) openWeek(b.dataset.week); });
+$("addWeek").onclick = () => openEdit(null);
+$("toStats").onclick = () => { statKid = kid; delKidArmed = false; renderStats(); show("stats"); };
+$("toSettings").onclick = () => { renderSettings(); show("settings"); };
+$("setBack").onclick = renderHome;
+$("statsBack").onclick = renderHome;
+
+/* ===================== audio ===================== */
+let actx = null;
+function audioCtx() { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); return actx; }
+const b64enc = u8 => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+const b64dec = s => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+const MU = Math.log1p(255);
+const muEnc = x => { x = Math.max(-1, Math.min(1, x)); return (x < 0 ? 0x80 : 0) | Math.round(Math.log1p(255 * Math.abs(x)) / MU * 127); };
+const muDec = b => (b & 0x80 ? -1 : 1) * (Math.pow(256, (b & 0x7f) / 127) - 1) / 255;
+const SR = 16000;
+async function to16k(pcm, rate) {
+  if (!pcm.length) return pcm;
+  const ac = audioCtx(), buf = ac.createBuffer(1, pcm.length, rate); buf.copyToChannel(pcm, 0);
+  const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(pcm.length * SR / rate)), SR);
+  const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start();
+  return (await off.startRendering()).getChannelData(0);
+}
+/* trim silence, normalise, μ-law encode */
+function clipFrom(d) {
+  const F = SR / 50 | 0, frames = Math.floor(d.length / F);
+  if (frames < 5) throw new Error("kort");
+  const rms = new Float32Array(frames);
+  for (let f = 0; f < frames; f++) { let e = 0; for (let i = f * F; i < f * F + F; i++) e += d[i] * d[i]; rms[f] = Math.sqrt(e / F); }
+  const sorted = Array.from(rms).sort((x, y) => x - y), floor = sorted[Math.floor(frames * 0.1)], top = sorted[frames - 1];
+  if (top < 0.006) throw new Error("tyst");
+  const th = floor + (top - floor) * 0.1;
+  let a = 0, b = frames - 1;
+  while (a < b && rms[a] < th) a++;
+  while (b > a && rms[b] < th) b--;
+  const s = Math.max(0, a * F - SR * 0.12 | 0), e = Math.min(d.length, (b + 1) * F + (SR * 0.25 | 0));
+  let peak = 0; for (let i = s; i < e; i++) peak = Math.max(peak, Math.abs(d[i]));
+  const g = peak > 0 ? 0.92 / peak : 1, out = new Uint8Array(e - s);
+  for (let i = 0; i < out.length; i++) out[i] = muEnc(d[s + i] * g);
+  return b64enc(out);
+}
+let curSrc = null;
+function stopAudio() { try { curSrc && curSrc.stop(); } catch {} curSrc = null; try { speechSynthesis.cancel(); } catch {} }
+function playClip(b64) {
+  const bytes = b64dec(b64), ac = audioCtx(), ab = ac.createBuffer(1, bytes.length, SR), ch = ab.getChannelData(0);
+  for (let i = 0; i < bytes.length; i++) ch[i] = muDec(bytes[i]);
+  stopAudio(); curSrc = ac.createBufferSource(); curSrc.buffer = ab; curSrc.connect(ac.destination); curSrc.start();
+}
+
+/* text-to-speech fallback */
+let voice = null, allVoices = [];
+const isSv = v => (v.lang || "").toLowerCase().replace("_", "-").startsWith("sv");
+function pickVoice() {
+  if (!("speechSynthesis" in window)) return;
+  allVoices = speechSynthesis.getVoices(); const sv = allVoices.filter(isSv), saved = LS.get("vo:voice");
+  voice = sv.find(v => v.voiceURI === saved) || sv.find(v => /enhanced|förbättrad|premium/i.test(v.name)) || sv.find(v => /alva|klara|sofie|oskar/i.test(v.name)) || sv[0] || null;
+}
+if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function tts(text) {
+  if (!("speechSynthesis" in window)) return;
+  if (!voice) pickVoice(); stopAudio();
+  const u = new SpeechSynthesisUtterance(text); u.lang = "sv-SE"; if (voice) u.voice = voice; u.rate = 0.8; speechSynthesis.speak(u);
+}
+function sayWord(w) { const m = media[w.id]; if (m && m.audio) playClip(m.audio); else tts(w.word); }
+
+/* ===================== edit week ===================== */
+let editWeek = null, draft = [], removed = [], popFor = null, imgTarget = null, delArmed = false;
+async function openEdit(weekId) {
+  editWeek = weekId ? S.weeks.find(w => w.id === weekId) : null;
+  draft = editWeek ? wordsOf(editWeek.id).map(w => ({ ...w })) : [];
+  removed = []; popFor = null; delArmed = false;
+  if (!draft.length) draft.push(blank());
+  $("titleIn").value = editWeek ? editWeek.name : "Vecka " + (S.weeks.length + 1);
+  $("delWeek").hidden = !editWeek; $("delWeek").textContent = "Ta bort veckan";
+  show("edit"); renderRows();
+  if (editWeek) { await loadMedia(draft.map(w => w.id)); renderRows(); }
+}
+const blank = () => ({ id: uuid(), word: "", emoji: "", _new: true });
+function renderRows() {
+  $("rows").innerHTML = draft.map((w, i) => {
+    const m = media[w.id] || {};
+    const pic = m.image ? `<img src="${m.image}" alt="">` : w.emoji ? esc(w.emoji) : ICON.pic;
+    const row = `<div class="wrow">
+      <input data-i="${i}" value="${esc(w.word)}" placeholder="Skriv ett ord" aria-label="Ord ${i + 1}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="next">
+      <button type="button" class="cell ${m.image || w.emoji ? "on" : ""}" data-act="pic" data-i="${i}" aria-label="Bild">${pic}</button>
+      <button type="button" class="cell ${m.audio ? "on" : "rec"}" data-act="voice" data-i="${i}" aria-label="${m.audio ? "Lyssna" : "Spela in"}">${m.audio ? ICON.play : ICON.mic}</button>
+      <button type="button" class="x" data-act="del" data-i="${i}" aria-label="Ta bort ordet">${ICON.x}</button>
+    </div>`;
+    let pop = "";
+    if (popFor && popFor.i === i && popFor.kind === "pic") pop = `<div class="pop">
+      <input data-emoji="${i}" value="${esc(w.emoji)}" placeholder="🙂" aria-label="Emoji" autocomplete="off">
+      <button type="button" class="btn" data-act="pickimg" data-i="${i}">Välj bild</button>
+      ${m.image || w.emoji ? `<button type="button" class="ghost" data-act="clearpic" data-i="${i}">Ta bort</button>` : ""}</div>`;
+    if (popFor && popFor.i === i && popFor.kind === "voice") pop = `<div class="pop">
+      <button type="button" class="btn" data-act="listen" data-i="${i}">${ICON.play} Lyssna</button>
+      <button type="button" class="btn" data-act="rerec" data-i="${i}">${ICON.mic} Spela in igen</button>
+      <button type="button" class="ghost" data-act="clearvoice" data-i="${i}">Ta bort</button></div>`;
+    return row + pop;
+  }).join("");
+}
+$("rows").addEventListener("input", e => {
+  const t = e.target;
+  if (t.dataset.i !== undefined && !t.dataset.emoji) draft[+t.dataset.i].word = t.value;
+  if (t.dataset.emoji !== undefined) { const w = draft[+t.dataset.emoji]; w.emoji = t.value.trim(); w._dirty = true; }
+});
+$("rows").addEventListener("keydown", e => {
+  if (e.key !== "Enter" || e.target.dataset.i === undefined || e.target.dataset.emoji !== undefined) return;
+  e.preventDefault(); const i = +e.target.dataset.i;
+  if (i === draft.length - 1) draft.push(blank());
+  popFor = null; renderRows(); $("rows").querySelector(`input[data-i="${i + 1}"]`)?.focus();
+});
+$("rows").addEventListener("paste", e => {
+  const t = e.target; if (t.dataset.i === undefined || t.dataset.emoji !== undefined) return;
+  const parts = ((e.clipboardData || window.clipboardData)?.getData("text") || "").split(/[\n,;\t]+/).map(s => s.trim()).filter(Boolean);
+  if (parts.length < 2) return;
+  e.preventDefault(); const i = +t.dataset.i;
+  draft[i].word = parts[0]; draft.splice(i + 1, 0, ...parts.slice(1).map(word => ({ ...blank(), word }))); renderRows();
+});
+$("rows").addEventListener("focusout", e => { if (e.target.dataset.emoji !== undefined) renderRows(); });
+$("rows").addEventListener("click", async e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const i = +b.dataset.i, w = draft[i], act = b.dataset.act, m = media[w.id];
+  if (act === "pic") { popFor = popFor && popFor.i === i && popFor.kind === "pic" ? null : { i, kind: "pic" }; renderRows(); return; }
+  if (act === "voice") {
+    if (m && m.audio) { playClip(m.audio); popFor = popFor && popFor.i === i && popFor.kind === "voice" ? null : { i, kind: "voice" }; renderRows(); return; }
+    if (!w.word.trim()) { toast("Skriv ordet först."); return; }
+    if (await saveDraft()) openRecorder([draft.find(x => x.id === w.id)]);
+    return;
+  }
+  if (act === "del") { if (!w._new) removed.push(w.id); draft.splice(i, 1); if (!draft.length) draft.push(blank()); popFor = null; renderRows(); return; }
+  if (act === "pickimg") { imgTarget = w; $("imgFile").click(); return; }
+  if (act === "clearpic") { w.emoji = ""; w._dirty = true; if (m && m.image) { media[w.id] = { ...m, image: null }; w._imgDirty = true; } renderRows(); return; }
+  if (act === "listen") { playClip(m.audio); return; }
+  if (act === "rerec") { if (await saveDraft()) openRecorder([draft.find(x => x.id === w.id)]); return; }
+  if (act === "clearvoice") { media[w.id] = { ...m, audio: null }; await safe(api.upsert("media", { word_id: w.id, audio: null }, "word_id")); popFor = null; renderRows(); return; }
+});
+$("imgFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f || !imgTarget) return;
+  try {
+    const url = URL.createObjectURL(f), img = new Image();
+    await new Promise((r, j) => { img.onload = r; img.onerror = j; img.src = url; });
+    const s = Math.min(1, 480 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement("canvas");
+    c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+    const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    media[imgTarget.id] = { ...(media[imgTarget.id] || {}), image: c.toDataURL("image/jpeg", 0.8) };
+    imgTarget._imgDirty = true; renderRows();
+  } catch { toast("Kunde inte läsa bilden."); }
+};
+$("addRow").onclick = () => { draft.push(blank()); popFor = null; renderRows(); $("rows").querySelector(`input[data-i="${draft.length - 1}"]`)?.focus(); };
+
+/* Saves the week, its words and changed pictures. Returns false if nothing to save. */
+async function saveDraft() {
+  const seen = new Set();
+  const keep = draft.filter(w => { const k = norm(w.word); if (!k || seen.has(k)) { if (!w._new) removed.push(w.id); return false; } seen.add(k); return true; });
+  if (!keep.length) { toast("Skriv minst ett ord."); return false; }
+  const name = $("titleIn").value.trim() || "Vecka " + (S.weeks.length + (editWeek ? 0 : 1));
+  const week = editWeek || { id: uuid(), position: S.weeks.length };
+  try {
+    await api.upsert("weeks", { id: week.id, name, position: week.position ?? 0 });
+    const rows = keep.map((w, i) => ({ id: w.id, week_id: week.id, position: i, word: w.word.normalize("NFC").trim(), emoji: w.emoji || "" }));
+    await api.upsert("words", rows);
+    const imgs = keep.filter(w => w._imgDirty).map(w => ({ word_id: w.id, image: media[w.id]?.image || null }));
+    if (imgs.length) await api.upsert("media", imgs, "word_id");
+    if (removed.length) { await api.remove("media", removed, "word_id"); await api.remove("words", removed); }
+    week.name = name;
+    if (!editWeek) { S.weeks.push(week); editWeek = week; $("delWeek").hidden = false; }
+    S.words = S.words.filter(w => w.week_id !== week.id).concat(rows);
+    draft = rows.map(r => ({ ...r })); removed = [];
+    return true;
+  } catch (e) { console.error(e); toast("Kunde inte spara. Kontrollera internetanslutningen."); return false; }
+}
+$("editDone").onclick = async () => { if (await saveDraft()) openWeek(editWeek.id); };
+$("editBack").onclick = async () => { if (draft.some(w => w.word.trim())) await saveDraft(); renderHome(); };
+$("delWeek").onclick = async () => {
+  if (!delArmed) { delArmed = true; $("delWeek").textContent = "Tryck igen för att ta bort"; return; }
+  const ids = wordsOf(editWeek.id).map(w => w.id);
+  await safe(api.remove("media", ids, "word_id")); await safe(api.remove("words", ids)); await safe(api.remove("weeks", editWeek.id));
+  S.weeks = S.weeks.filter(w => w !== editWeek); S.words = S.words.filter(w => w.week_id !== editWeek.id); renderHome();
+};
+$("recAll").onclick = async () => { if (await saveDraft()) openRecorder(draft.slice()); };
+
+/* ===================== recorder ===================== */
+let R = null;
+function openRecorder(list) {
+  R = { all: list, queue: list.slice(), i: 0, clips: {}, phase: "intro", chunks: [], total: 0, mark: 0, rate: 48000, mic: null, busy: false };
+  $("recCrumb").textContent = $("titleIn").value || "";
+  show("rec"); renderStudio();
+}
+function renderStudio() {
+  const st = $("studio");
+  if (R.phase === "intro") {
+    st.innerHTML = `<div class="count">${R.queue.length} ${R.queue.length === 1 ? "ord" : "ord"}</div>
+      <div class="prompt" style="font-size:2rem">Redo att spela in?</div>
+      <p class="sub" style="max-width:380px">Ordet visas på skärmen. Säg det tydligt, gärna i en kort mening, och tryck sedan <b>Nästa</b>. Mellanslag eller Enter fungerar också på datorn.</p>
+      <div class="sbtns"><button class="btn primary big" id="recStart" type="button">${ICON.mic} Starta</button></div>`;
+    $("recStart").onclick = startMic; return;
+  }
+  if (R.phase === "rec") {
+    const w = R.queue[R.i], m = media[w.id] || {}, nxt = R.queue[R.i + 1];
+    st.innerHTML = `<span class="recdot">Spelar in</span>
+      <div class="count">${R.i + 1} av ${R.queue.length}</div>
+      <div class="pic">${m.image ? `<img src="${m.image}" alt="">` : esc(w.emoji || "")}</div>
+      <div class="prompt">${esc(w.word)}</div>
+      <div class="meter"><i id="lvl"></i></div>
+      <div class="next">${nxt ? "Sedan: " + esc(nxt.word) : "Sista ordet"}</div>
+      <div class="sbtns">
+        <button class="btn big" id="recRedo" type="button">Gör om</button>
+        <button class="btn primary big" id="recNext" type="button">${nxt ? "Nästa" : "Klar"}</button>
+      </div>`;
+    $("recNext").onclick = recNext; $("recRedo").onclick = recRedo; return;
+  }
+  // review
+  const missing = R.all.filter(w => !R.clips[w.id] && !(media[w.id] && media[w.id].audio));
+  st.innerHTML = `<div class="prompt" style="font-size:2rem">Lyssna igenom</div>
+    <p class="sub">Tryck på ett ord för att höra det. Gör om de som blev fel.</p>
+    <div class="review">${R.all.map(w => {
+      const has = R.clips[w.id] || (media[w.id] && media[w.id].audio);
+      return `<div class="rrow"><button type="button" class="cell ${has ? "on" : ""}" data-play="${w.id}" ${has ? "" : "disabled"} aria-label="Lyssna">${ICON.play}</button>
+        <b>${esc(w.word)}</b>${has ? "" : `<span class="miss">Inget ljud</span>`}
+        <button type="button" class="ghost" data-redo="${w.id}">Gör om</button></div>`;
+    }).join("")}</div>
+    <div class="sbtns"><button class="btn primary big" id="recSave" type="button">Spara ${Object.keys(R.clips).length} inspelningar</button></div>
+    ${missing.length ? `<p class="sub">${missing.length} ord saknar ljud och läses med datorrösten.</p>` : ""}`;
+  st.querySelectorAll("[data-play]").forEach(b => b.onclick = () => { const id = b.dataset.play; playClip(R.clips[id] || media[id].audio); });
+  st.querySelectorAll("[data-redo]").forEach(b => b.onclick = () => { R.queue = [R.all.find(w => w.id === b.dataset.redo)]; R.i = 0; startMic(); });
+  $("recSave").onclick = saveClips;
+}
+async function startMic() {
+  if (!navigator.mediaDevices?.getUserMedia) { toast("Webbläsaren kan inte spela in. Använd Safari eller Chrome."); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+  catch { toast("Mikrofonen är blockerad. Tillåt mikrofonen för den här sidan i webbläsaren och försök igen."); return; }
+  const ac = audioCtx(), src = ac.createMediaStreamSource(stream), proc = ac.createScriptProcessor(4096, 1, 1), mute = ac.createGain();
+  mute.gain.value = 0; src.connect(proc); proc.connect(mute); mute.connect(ac.destination);
+  R.chunks = []; R.total = 0; R.mark = 0; R.rate = ac.sampleRate; R.mic = { stream, src, proc, mute };
+  proc.onaudioprocess = e => {
+    const d = e.inputBuffer.getChannelData(0); R.chunks.push(new Float32Array(d)); R.total += d.length;
+    let s = 0; for (let i = 0; i < d.length; i += 8) s += d[i] * d[i];
+    const lvl = $("lvl"); if (lvl) lvl.style.width = Math.min(100, Math.sqrt(s / (d.length / 8)) * 600) + "%";
+  };
+  R.phase = "rec"; renderStudio();
+}
+function stopMic() {
+  if (!R || !R.mic) return;
+  try { R.mic.proc.onaudioprocess = null; R.mic.src.disconnect(); R.mic.proc.disconnect(); R.mic.mute.disconnect(); } catch {}
+  R.mic.stream.getTracks().forEach(t => t.stop()); R.mic = null;
+}
+function samples(a, b) {
+  const out = new Float32Array(Math.max(0, b - a)); let pos = 0, off = 0;
+  for (const c of R.chunks) { const cs = off, ce = off + c.length; if (ce > a && cs < b) { const s = Math.max(a, cs) - cs, e = Math.min(b, ce) - cs; out.set(c.subarray(s, e), pos); pos += e - s; } off = ce; }
+  return out;
+}
+async function recNext() {
+  if (R.busy) return; R.busy = true;
+  await sleep(250);
+  const end = R.total, pcm = samples(R.mark, end), w = R.queue[R.i];
+  R.mark = end;
+  try { R.clips[w.id] = clipFrom(await to16k(pcm, R.rate)); }
+  catch { toast(`Hörde inget för ”${w.word}”. Du kan göra om det efteråt.`); }
+  R.i++; R.busy = false;
+  if (R.i >= R.queue.length) { stopMic(); R.phase = "review"; }
+  renderStudio();
+}
+function recRedo() { R.mark = R.total; toast("Säg ordet igen."); }
+async function saveClips() {
+  const rows = Object.entries(R.clips).map(([word_id, audio]) => ({ word_id, audio }));
+  $("recSave").disabled = true;
+  try {
+    await api.upsert("media", rows, "word_id");
+    for (const r of rows) media[r.word_id] = { ...(media[r.word_id] || {}), audio: r.audio };
+    toast(`Sparade ${rows.length} inspelningar.`);
+    R = null; show("edit"); renderRows();
+  } catch (e) { console.error(e); toast("Kunde inte spara inspelningarna. Kontrollera internetanslutningen."); $("recSave").disabled = false; }
+}
+$("recClose").onclick = () => { stopMic(); R = null; show("edit"); renderRows(); };
+
+/* ===================== quiz ===================== */
+let week = null, q = null;
+async function openWeek(id) {
+  stopQuiz();
+  week = S.weeks.find(w => w.id === id); if (!week) return renderHome();
+  const k = S.kids.find(k => k.id === kid);
+  $("weekHead").textContent = week.name + (k ? " · " + k.name : "");
+  resetStage(); $("qcount").textContent = wordsOf(week.id).length + " ord";
+  show("week");
+  try { await loadMedia(wordsOf(week.id).map(w => w.id)); } catch {}
+}
+function resetStage() {
+  $("typed").className = "typed"; $("typed").textContent = ""; $("typed").hidden = false; $("line").className = "line"; $("fix").textContent = "";
+  $("done").hidden = true; $("again").hidden = true; $("qpic").hidden = true; setPlayIcon(false); $("kbd").classList.add("off");
+}
+function setPlayIcon(p) { $("icoPlay").toggleAttribute("hidden", p); $("icoPause").toggleAttribute("hidden", !p); $("playBtn").setAttribute("aria-label", p ? "Pausa" : q ? "Fortsätt" : "Starta"); }
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+$("playBtn").onclick = () => { try { audioCtx(); } catch {} if (!q) startQuiz(); else if (q.phase === "paused") resumeQuiz(); else pauseQuiz(); };
+function startQuiz() {
+  const words = wordsOf(week.id); if (!words.length) return;
+  if (!kid) toast("Ingen är vald, så resultatet sparas inte. Lägg till ett barn på startsidan.");
+  q = { words, queue: shuffle(words.slice()), firstWrong: new Set(), ok: new Set(), typed: "", phase: "typing", resume: null, timer: null };
+  resetStage(); setPlayIcon(true); nextWord();
+}
+function pauseQuiz() { clearTimeout(q.timer); stopAudio(); q.resume = q.phase; q.phase = "paused"; setPlayIcon(false); $("kbd").classList.add("off"); $("again").hidden = true; }
+function resumeQuiz() { setPlayIcon(true); if (q.resume === "feedback") afterFeedback(); else { q.phase = "typing"; $("kbd").classList.remove("off"); $("again").hidden = false; sayWord(q.queue[0]); } }
+function stopQuiz() { if (q) clearTimeout(q.timer); stopAudio(); q = null; }
+function showPic(w) {
+  const m = media[w.id];
+  if (m && m.image) $("qpic").innerHTML = `<img src="${m.image}" alt="">`;
+  else if (w.emoji) $("qpic").textContent = w.emoji;
+  else { $("qpic").hidden = true; return; }
+  $("qpic").hidden = false;
+}
+function nextWord() {
+  q.phase = "typing"; q.typed = "";
+  $("typed").className = "typed"; $("line").className = "line"; $("fix").textContent = "";
+  drawTyped(); $("qcount").textContent = `${q.ok.size} av ${q.words.length} klara`;
+  showPic(q.queue[0]); $("kbd").classList.remove("off"); $("again").hidden = false;
+  sayWord(q.queue[0]);
+}
+function drawTyped() { $("typed").innerHTML = esc(q.typed) + (q.phase === "typing" ? '<span class="caret"></span>' : ""); }
+function lcsMarks(a, b) {
+  const n = a.length, m = b.length, dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const mb = new Array(m).fill(false); let i = 0, j = 0;
+  while (i < n && j < m) { if (a[i] === b[j]) { mb[j] = true; i++; j++; } else if (dp[i + 1][j] >= dp[i][j + 1]) i++; else j++; }
+  return mb;
+}
+function submit() {
+  if (!q || q.phase !== "typing" || !q.typed.trim()) return;
+  const w = q.queue[0], right = norm(q.typed) === norm(w.word);
+  q.phase = "feedback"; drawTyped(); $("kbd").classList.add("off"); $("again").hidden = true;
+  $("typed").className = "typed " + (right ? "right" : "wrong"); $("line").className = "line " + (right ? "right" : "wrong");
+  q.queue.shift();
+  if (right) q.ok.add(w.id);
+  else {
+    q.firstWrong.add(w.word); q.queue.push(w);
+    const marks = lcsMarks([...norm(q.typed)], [...w.word.toLowerCase()]);
+    $("fix").innerHTML = [...w.word].map((c, i) => marks[i] ? esc(c) : `<span class="x2">${esc(c)}</span>`).join("");
+  }
+  $("qcount").textContent = `${q.ok.size} av ${q.words.length} klara`;
+  q.timer = setTimeout(afterFeedback, right ? 1100 : 2800);
+}
+async function afterFeedback() {
+  if (!q) return;
+  if (q.queue.length) { setPlayIcon(true); nextWord(); return; }
+  const n = q.words.length, ok = n - q.firstWrong.size;
+  if (kid) {
+    const s = { id: uuid(), kid_id: kid, week_id: week.id, words: q.words.map(w => w.word), missed: [...q.firstWrong], ok, created_at: new Date().toISOString() };
+    S.sessions.push(s);
+    api.upsert("sessions", sb ? (({ created_at, ...r }) => r)(s) : s).catch(() => toast("Kunde inte spara resultatet."));
+  }
+  q = null; resetStage();
+  $("doneScore").textContent = `${ok} av ${n} rätt`; $("done").hidden = false; $("typed").hidden = true;
+  $("qcount").textContent = ok === n ? "Alla rätt på första försöket!" : "rätt på första försöket";
+}
+$("again").onclick = () => { if (q && q.phase === "typing") sayWord(q.queue[0]); };
+$("weekBack").onclick = () => { stopQuiz(); renderHome(); };
+$("weekEdit").onclick = () => { stopQuiz(); openEdit(week.id); };
+(function buildKbd() {
+  ["qwertyuiopå", "asdfghjklöä", "zxcvbnm"].forEach((r, i) => {
+    const row = document.createElement("div"); row.className = "krow";
+    [...r].forEach(ch => { const b = document.createElement("button"); b.type = "button"; b.textContent = ch; b.dataset.k = ch; row.append(b); });
+    if (i === 2) { const b = document.createElement("button"); b.type = "button"; b.className = "wide"; b.textContent = "⌫"; b.dataset.k = "back"; b.setAttribute("aria-label", "Sudda"); row.append(b); }
+    $("kbd").append(row);
+  });
+  const row = document.createElement("div"); row.className = "krow"; row.innerHTML = '<button type="button" class="go" data-k="enter">Klar</button>'; $("kbd").append(row);
+  $("kbd").addEventListener("click", e => { const k = e.target.closest("button")?.dataset.k; if (k) key(k); });
+})();
+function key(k) {
+  if (!q || q.phase !== "typing") return;
+  if (k === "enter") return submit();
+  if (k === "back") q.typed = q.typed.slice(0, -1); else if (q.typed.length < 40) q.typed += k;
+  drawTyped();
+}
+document.addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!$("v-rec").hidden && R && R.phase === "rec") {
+    if (e.key === " " || e.key === "Enter") { e.preventDefault(); recNext(); }
+    else if (e.key === "Backspace") { e.preventDefault(); recRedo(); }
+    return;
+  }
+  if ($("v-week").hidden) return;
+  if (e.key === "Enter") { e.preventDefault(); key("enter"); }
+  else if (e.key === "Backspace") { e.preventDefault(); key("back"); }
+  else if (/^[a-zåäöéü-]$/i.test(e.key)) { e.preventDefault(); key(e.key.toLowerCase()); }
+});
+
+/* ===================== stats ===================== */
+let statKid = null, delKidArmed = false;
+$("statKids").addEventListener("click", e => { const b = e.target.closest("[data-kid]"); if (!b) return; statKid = b.dataset.kid; delKidArmed = false; renderStats(); });
+function renderStats() {
+  if (!S.kids.some(k => k.id === statKid)) statKid = S.kids[0]?.id || null;
+  kidChips($("statKids"), statKid, false);
+  const body = $("statBody");
+  if (!statKid) { body.innerHTML = `<p class="sub" style="margin-top:20px">Lägg till ett barn på startsidan så sparas resultaten per barn.</p>`; return; }
+  const ss = kidSessions(statKid), weekName = id => S.weeks.find(w => w.id === id)?.name || "Borttagen vecka";
+  const per = new Map();
+  for (const s of ss) for (const w of s.words) { const k = s.week_id + "|" + w, r = per.get(k) || { w, week: s.week_id, asked: 0, wrong: 0 }; r.asked++; if (s.missed.includes(w)) r.wrong++; per.set(k, r); }
+  const all = [...per.values()], asked = all.reduce((a, r) => a + r.asked, 0), wrong = all.reduce((a, r) => a + r.wrong, 0);
+  const hard = all.filter(r => r.wrong).sort((a, b) => b.wrong / b.asked - a.wrong / a.asked || b.wrong - a.wrong).slice(0, 25);
+  const fmt = new Intl.DateTimeFormat("sv-SE", { day: "numeric", month: "short" });
+  const weeks = S.weeks.map(w => ({ w, s: ss.filter(x => x.week_id === w.id) })).filter(x => x.s.length);
+  body.innerHTML = `
+    <div class="stats3">
+      <div><b>${ss.length}</b><span>förhör</span></div>
+      <div><b>${asked ? Math.round(100 * (asked - wrong) / asked) + " %" : "–"}</b><span>rätt första gången</span></div>
+      <div><b>${ss.length ? fmt.format(new Date(ss[ss.length - 1].created_at)) : "–"}</b><span>senast</span></div>
+    </div>
+    <div class="h2">Svårast just nu</div>
+    ${hard.length ? hard.map(r => `<div class="srow"><span class="w">${esc(r.w)}</span><span class="n">fel ${r.wrong} av ${r.asked}</span><span class="s">${esc(weekName(r.week))}</span><span class="bar2"><i style="width:${Math.round(100 * r.wrong / r.asked)}%"></i></span></div>`).join("")
+      : `<p class="sub">${ss.length ? "Inga fel ännu." : "Inga förhör ännu."}</p>`}
+    <div class="h2">Per vecka</div>
+    ${weeks.length ? weeks.map(({ w, s }) => { const l = s[s.length - 1], best = Math.max(...s.map(x => x.ok));
+      return `<div class="srow"><span class="w">${esc(w.name)}</span><span class="n">${l.ok}/${l.words.length}</span><span class="s">${s.length} ${s.length === 1 ? "gång" : "gånger"} · bäst ${best}/${l.words.length} · senast ${fmt.format(new Date(l.created_at))}</span></div>`; }).join("")
+      : `<p class="sub">Inga förhör ännu.</p>`}
+    <button class="ghost danger" id="delKid" type="button" style="margin:32px 0 60px;padding-left:4px">${delKidArmed ? "Tryck igen för att ta bort" : "Ta bort " + esc(S.kids.find(k => k.id === statKid)?.name)}</button>`;
+  $("delKid").onclick = async () => {
+    if (!delKidArmed) { delKidArmed = true; renderStats(); return; }
+    await safe(api.remove("sessions", S.sessions.filter(s => s.kid_id === statKid).map(s => s.id)));
+    await safe(api.remove("kids", statKid));
+    S.sessions = S.sessions.filter(s => s.kid_id !== statKid); S.kids = S.kids.filter(k => k.id !== statKid);
+    if (kid === statKid) setKid(S.kids[0]?.id || null);
+    statKid = kid; delKidArmed = false; renderStats();
+  };
+}
+
+/* ===================== settings ===================== */
+function renderSettings() {
+  pickVoice();
+  const sv = allVoices.filter(isSv);
+  $("vlist").innerHTML = sv.length ? sv.map((v, i) => `<label><input type="radio" name="v" value="${i}" ${voice === v ? "checked" : ""}>${esc(v.name)}<small>${esc(v.lang)}</small></label>`).join("")
+    : `<p class="sub" style="padding:10px 4px">Ingen svensk datorröst hittades på den här enheten. Spela in orden med din röst, eller installera en svensk röst (iPhone: Inställningar → Hjälpmedel → Uppläst innehåll → Röster → Svenska).</p>`;
+  $("vlist").onchange = e => { voice = sv[+e.target.value]; LS.set("vo:voice", voice.voiceURI); tts("Hej! Nu ska vi öva stavning."); };
+  $("acct").textContent = sb ? `Inloggad som ${user?.email || ""}. Resultat och inspelningar synkas mellan alla enheter som är inloggade med samma konto.` : "Testläge utan konto. Allt sparas bara i den här webbläsaren.";
+  $("logout").hidden = !sb;
+}
+$("voiceTest").onclick = () => tts("Hej! Nu ska vi öva stavning.");
+
+boot();
+</script>
+</body>
+</html>
