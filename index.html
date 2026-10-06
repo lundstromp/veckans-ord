@@ -6,6 +6,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Veckans ord">
 <meta name="theme-color" content="#ffffff">
+<!-- Security policy: scripts only from this site and two pinned CDNs, data only to Supabase and the OCR language files -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; connect-src 'self' https://evyuyizhcazxbbdddysa.supabase.co wss://evyuyizhcazxbbdddysa.supabase.co https://cdn.jsdelivr.net https://tessdata.projectnaptha.com data: blob:; img-src 'self' data: blob:; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Veckans ord</title>
 <script>
 /* Fyll i från Supabase → Project Settings → API. Tomt = testläge (sparas bara i den här webbläsaren). */
@@ -14,8 +16,8 @@ const CONFIG = {
   key: "sb_publishable_zxqLEQsqX7nfT0w9_2C0fg_bb-66S1P",
 };
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js" integrity="sha384-WgXwGL6fUsYJWNaKJgVbrJKGRQwc1vieh2oy4kw9nXqpNDz3tdSsqEYUgeHD/NuF" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" integrity="sha384-mZT2gIty7ZDdOGkxfP6joZcYdMW1Jvj9dRlfpTmaJAKKXTqzygtB22k7FLe+KZC1" crossorigin="anonymous"></script>
 <style>
 /* Notion-like: white page, warm-black text, hairline rules, light weights. */
 :root{
@@ -70,6 +72,7 @@ button:focus-visible,input:focus-visible{outline:2px solid rgba(35,131,226,.5);o
 .trow{display:flex;align-items:center;gap:12px;width:100%;padding:12px 6px;border-bottom:1px solid var(--line);text-align:left;border-radius:0}
 button.trow:hover{background:var(--hover)}
 .trow .name{flex:1;min-width:0;font-size:1.05rem}
+.trow .dot{width:6px;height:6px;border-radius:50%;background:var(--red);flex:none}
 .trow .meta{color:var(--muted);font-size:.88rem;font-variant-numeric:tabular-nums;white-space:nowrap}
 .empty{color:var(--faint);padding:28px 6px;font-size:.95rem}
 .fab{position:fixed;right:max(20px,calc(50% - 300px));bottom:calc(24px + env(safe-area-inset-bottom,0px));width:56px;height:56px;border-radius:50%;background:var(--text);color:#fff;display:grid;place-items:center;box-shadow:0 2px 10px rgba(15,15,15,.15)}
@@ -324,6 +327,8 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "
 const norm = s => s.normalize("NFC").trim().toLowerCase();
 const uuid = () => crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* Only base64 image data from our own uploads is ever put into an <img> */
+const imgTag = u => typeof u === "string" && /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(u) ? `<img src="${u}" alt="">` : "";
 const LS = { get(k, d = null) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 let toastT;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2500 + msg.length * 45); }
@@ -364,8 +369,9 @@ const api = {
     LOCAL.put(t, LOCAL.get(t).filter(r => !ids.includes(r[key])));
   },
 };
+const limitMsg = e => e && (e.code === "P0001" || e.code === "23514") ? (/Gränsen/.test(e.message) ? e.message + "." : "Gränsen för lagring är nådd.") : null;
 async function safe(p, msg = "Kunde inte spara. Kontrollera internetanslutningen.") {
-  try { return await p; } catch (e) { console.error(e); toast(msg); throw e; }
+  try { return await p; } catch (e) { console.error(e); toast(limitMsg(e) || msg); throw e; }
 }
 
 /* ===================== state ===================== */
@@ -374,8 +380,46 @@ const media = {};           // word_id -> {image, audio}
 let kid = LS.get("vo:kid");
 const wordsOf = weekId => S.words.filter(w => w.week_id === weekId).sort((a, b) => a.position - b.position);
 const kidSessions = (k, weekId) => S.sessions.filter(s => s.kid_id === k && (!weekId || s.week_id === weekId)).sort((a, b) => a.created_at < b.created_at ? -1 : 1);
+/* ---------- "svåraste ord": computed from the child's results, never stored ---------- */
+const HARD = { recent: 5, inRow: 2, max: 12, minShow: 3 };
+/* Every word's first-try results in time order (true = right first time), merged across weeks */
+function wordHistory(kidId) {
+  const h = new Map();
+  for (const s of kidSessions(kidId)) for (const w of s.words) {
+    const k = norm(w), r = h.get(k) || { word: w, tries: [], weekId: null, lastWrongAt: "" };
+    const right = !s.missed.includes(w);
+    r.tries.push(right);
+    if (!right) r.lastWrongAt = s.created_at;
+    if (s.week_id) r.weekId = s.week_id;
+    h.set(k, r);
+  }
+  return h;
+}
+/* Wrong at least once in the last 5 tries, and not yet right twice in a row. Most misses first, then most recent miss. */
+function hardWords(kidId) {
+  if (!kidId) return [];
+  const out = [];
+  for (const r of wordHistory(kidId).values()) {
+    const t = r.tries, wrong = t.slice(-HARD.recent).filter(x => !x).length;
+    const settled = t.length >= HARD.inRow && t.slice(-HARD.inRow).every(Boolean);
+    if (wrong && !settled) out.push({ ...r, wrong, of: Math.min(t.length, HARD.recent) });
+  }
+  return out.sort((a, b) => b.wrong - a.wrong || (a.lastWrongAt < b.lastWrongAt ? 1 : -1));
+}
+/* Use the real word row (for recording and picture) from the week it was last practised in */
+function hardWordRows(kidId) {
+  return hardWords(kidId).slice(0, HARD.max).map(r => {
+    const k = norm(r.word);
+    return S.words.find(w => w.week_id === r.weekId && norm(w.word) === k) || S.words.find(w => norm(w.word) === k)
+      || { id: "x-" + k, word: r.word, emoji: "" };
+  });
+}
+const genitive = n => /[sxz]$/i.test(n) ? n : n + "s";
+const hardName = () => { const k = S.kids.find(k => k.id === kid); return k ? `${genitive(k.name)} svåraste ord` : "Svåraste orden"; };
+const hardSessions = k => kidSessions(k).filter(s => !s.week_id);
+
 async function loadMedia(ids) {
-  const need = ids.filter(id => !(id in media));
+  const need = ids.filter(id => !(id in media) && !id.startsWith("x-"));
   if (!need.length) return;
   const rows = await api.list("media", { in: ["word_id", need] });
   for (const id of need) media[id] = null;
@@ -443,18 +487,21 @@ async function afterLogin() {
 /* ===================== home ===================== */
 function setKid(id) { kid = id; LS.set("vo:kid", id); }
 function kidChips(el, selected, withAdd) {
-  el.innerHTML = S.kids.map(k => `<button type="button" class="kid" data-kid="${k.id}" aria-pressed="${k.id === selected}">${esc(k.name)}</button>`).join("")
+  el.innerHTML = S.kids.map(k => `<button type="button" class="kid" data-kid="${esc(k.id)}" aria-pressed="${k.id === selected}">${esc(k.name)}</button>`).join("")
     + (withAdd ? `<button type="button" class="kid add" data-kid="+">+ ${S.kids.length ? "Lägg till" : "Lägg till barn"}</button>` : "");
 }
 function renderHome() {
   show("home");
   kidChips($("kids"), kid, true);
   const weeks = [...S.weeks].sort((a, b) => a.position - b.position || (a.created_at < b.created_at ? -1 : 1));
-  $("weekList").innerHTML = weeks.length ? weeks.map(w => {
+  const hard = hardWords(kid), hs = kid ? hardSessions(kid) : [], hl = hs[hs.length - 1];
+  const hardRow = hard.length >= HARD.minShow
+    ? `<button type="button" class="trow" data-week="hard"><span class="dot" aria-hidden="true"></span><span class="name">${esc(hardName())}</span><span class="meta">${hl ? `${hl.ok}/${hl.words.length} · ` : ""}${Math.min(hard.length, HARD.max)} ord</span></button>` : "";
+  $("weekList").innerHTML = hardRow + (weeks.length ? weeks.map(w => {
     const ss = kid ? kidSessions(kid, w.id) : [], last = ss[ss.length - 1], n = wordsOf(w.id).length;
     const meta = last ? `${last.ok}/${last.words.length} · ${ss.length} ${ss.length === 1 ? "gång" : "gånger"}` : `${n} ord`;
-    return `<button type="button" class="trow" data-week="${w.id}"><span class="name">${esc(w.name)}</span><span class="meta">${meta}</span></button>`;
-  }).join("") : `<div class="empty">Tryck på plus för att lägga till veckans ord.</div>`;
+    return `<button type="button" class="trow" data-week="${esc(w.id)}"><span class="name">${esc(w.name)}</span><span class="meta">${meta}</span></button>`;
+  }).join("") : `<div class="empty">Tryck på plus för att lägga till veckans ord.</div>`);
   $("modeNote").textContent = sb ? "" : "Testläge: allt sparas bara i den här webbläsaren.";
 }
 $("kids").addEventListener("click", e => {
@@ -504,7 +551,7 @@ function clipFrom(d) {
   let a = 0, b = frames - 1;
   while (a < b && rms[a] < th) a++;
   while (b > a && rms[b] < th) b--;
-  const s = Math.max(0, a * F - SR * 0.12 | 0), e = Math.min(d.length, (b + 1) * F + (SR * 0.25 | 0));
+  const s = Math.max(0, a * F - SR * 0.12 | 0), e = Math.min(d.length, (b + 1) * F + (SR * 0.25 | 0), s + SR * 10);   // max 10 s
   let peak = 0; for (let i = s; i < e; i++) peak = Math.max(peak, Math.abs(d[i]));
   const g = peak > 0 ? 0.92 / peak : 1, out = new Uint8Array(e - s);
   for (let i = 0; i < out.length; i++) out[i] = muEnc(d[s + i] * g);
@@ -580,7 +627,7 @@ const blank = () => ({ id: uuid(), word: "", emoji: "", _new: true });
 function renderRows() {
   $("rows").innerHTML = draft.map((w, i) => {
     const m = media[w.id] || {};
-    const pic = m.image ? `<img src="${m.image}" alt="">` : w.emoji ? esc(w.emoji) : ICON.pic;
+    const pic = imgTag(m.image) || (w.emoji ? esc(w.emoji) : ICON.pic);
     const row = `<div class="wrow">
       <input data-i="${i}" value="${esc(w.word)}" placeholder="Skriv ett ord" aria-label="Ord ${i + 1}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="next">
       <button type="button" class="cell ${m.image || w.emoji ? "on" : ""}" data-act="pic" data-i="${i}" aria-label="Bild">${pic}</button>
@@ -644,7 +691,9 @@ $("imgFile").onchange = async e => {
     c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
     const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
     URL.revokeObjectURL(url);
-    media[imgTarget.id] = { ...(media[imgTarget.id] || {}), image: c.toDataURL("image/jpeg", 0.8) };
+    let quality = 0.8, data = c.toDataURL("image/jpeg", quality);
+    while (data.length > 300000 && quality > 0.35) { quality -= 0.1; data = c.toDataURL("image/jpeg", quality); }
+    media[imgTarget.id] = { ...(media[imgTarget.id] || {}), image: data };
     imgTarget._imgDirty = true; renderRows();
   } catch { toast("Kunde inte läsa bilden."); }
 };
@@ -679,7 +728,7 @@ async function doSaveDraft() {
     S.words = S.words.filter(w => w.week_id !== week.id).concat(rows);
     draft = rows.map(r => ({ ...r })); removed = [];
     return true;
-  } catch (e) { console.error(e); toast(e && e.message === "timeout" ? "Det tog för lång tid att spara. Stäng andra flikar med appen och försök igen." : "Kunde inte spara. Kontrollera internetanslutningen."); return false; }
+  } catch (e) { console.error(e); toast(limitMsg(e) || (e && e.message === "timeout" ? "Det tog för lång tid att spara. Stäng andra flikar med appen och försök igen." : "Kunde inte spara. Kontrollera internetanslutningen.")); return false; }
 }
 /* Shows "Sparar …" on the pressed button and blocks double taps while saving */
 async function busy(btn, label, fn) {
@@ -726,7 +775,7 @@ function renderStudio() {
     const w = R.queue[R.i], m = media[w.id] || {}, nxt = R.queue[R.i + 1];
     st.innerHTML = `<span class="recdot">Spelar in</span>
       <div class="count">${R.i + 1} av ${R.queue.length}</div>
-      <div class="pic">${m.image ? `<img src="${m.image}" alt="">` : esc(w.emoji || "")}</div>
+      <div class="pic">${imgTag(m.image) || esc(w.emoji || "")}</div>
       <div class="prompt">${esc(w.word)}</div>
       <div class="meter"><i id="lvl"></i></div>
       <div class="next">${nxt ? "Sedan: " + esc(nxt.word) : "Sista ordet"}</div>
@@ -742,9 +791,9 @@ function renderStudio() {
     <p class="sub">Tryck på ett ord för att höra det. Gör om de som blev fel.</p>
     <div class="review">${R.all.map(w => {
       const has = R.clips[w.id] || (media[w.id] && media[w.id].audio);
-      return `<div class="rrow"><button type="button" class="cell ${has ? "on" : ""}" data-play="${w.id}" ${has ? "" : "disabled"} aria-label="Lyssna">${ICON.play}</button>
+      return `<div class="rrow"><button type="button" class="cell ${has ? "on" : ""}" data-play="${esc(w.id)}" ${has ? "" : "disabled"} aria-label="Lyssna">${ICON.play}</button>
         <b>${esc(w.word)}</b>${has ? "" : `<span class="miss">Inget ljud</span>`}
-        <button type="button" class="ghost" data-redo="${w.id}">Gör om</button></div>`;
+        <button type="button" class="ghost" data-redo="${esc(w.id)}">Gör om</button></div>`;
     }).join("")}</div>
     <div class="sbtns"><button class="btn primary big" id="recSave" type="button">Spara ${Object.keys(R.clips).length} inspelningar</button></div>
     ${missing.length ? `<p class="sub">${missing.length} ord saknar ljud och läses med datorrösten.</p>` : ""}`;
@@ -764,6 +813,7 @@ async function startMic() {
   R.chunks = []; R.total = 0; R.mark = 0; R.rate = ac.sampleRate; R.mic = { stream, src, proc, mute };
   proc.onaudioprocess = e => {
     const d = e.inputBuffer.getChannelData(0); R.chunks.push(new Float32Array(d)); R.total += d.length;
+    if (R.total - R.mark > R.rate * 15 && !R.warned) { R.warned = true; toast("Glöm inte att trycka Nästa efter varje ord."); }
     let s = 0; for (let i = 0; i < d.length; i += 8) s += d[i] * d[i];
     const lvl = $("lvl"); if (lvl) lvl.style.width = Math.min(100, Math.sqrt(s / (d.length / 8)) * 600) + "%";
   };
@@ -783,7 +833,7 @@ async function recNext() {
   if (R.busy) return; R.busy = true;
   await sleep(250);
   const end = R.total, pcm = samples(R.mark, end), w = R.queue[R.i];
-  R.mark = end;
+  R.mark = end; R.warned = false;
   try { R.clips[w.id] = clipFrom(await to16k(pcm, R.rate)); }
   catch { toast(`Hörde inget för ”${w.word}”. Du kan göra om det efteråt.`); }
   R.i++; R.busy = false;
@@ -799,20 +849,24 @@ async function saveClips() {
     for (const r of rows) media[r.word_id] = { ...(media[r.word_id] || {}), audio: r.audio };
     toast(`Sparade ${rows.length} inspelningar.`);
     R = null; show("edit"); renderRows();
-  } catch (e) { console.error(e); toast("Kunde inte spara inspelningarna. Kontrollera internetanslutningen."); $("recSave").disabled = false; }
+  } catch (e) { console.error(e); toast(limitMsg(e) || "Kunde inte spara inspelningarna. Kontrollera internetanslutningen."); $("recSave").disabled = false; }
 }
 $("recClose").onclick = () => { stopMic(); R = null; show("edit"); renderRows(); };
 
 /* ===================== quiz ===================== */
 let week = null, q = null;
+const quizWords = () => week.virtual ? (week.words = hardWordRows(kid)) : wordsOf(week.id);
 async function openWeek(id) {
   stopQuiz();
-  week = S.weeks.find(w => w.id === id); if (!week) return renderHome();
+  week = id === "hard" ? { id: "hard", name: hardName(), virtual: true } : S.weeks.find(w => w.id === id);
+  if (!week) return renderHome();
   const k = S.kids.find(k => k.id === kid);
-  $("weekHead").textContent = week.name + (k ? " · " + k.name : "");
-  resetStage(); $("qcount").textContent = wordsOf(week.id).length + " ord";
+  $("weekHead").textContent = week.virtual ? week.name : week.name + (k ? " · " + k.name : "");
+  $("weekEdit").hidden = !!week.virtual;
+  const words = quizWords();
+  resetStage(); $("qcount").textContent = words.length + " ord";
   show("week");
-  try { await loadMedia(wordsOf(week.id).map(w => w.id)); } catch {}
+  try { await loadMedia(words.map(w => w.id)); } catch {}
 }
 function resetStage() {
   $("typed").className = "typed"; $("typed").textContent = ""; $("typed").hidden = false; $("line").className = "line"; $("fix").textContent = "";
@@ -822,7 +876,8 @@ function setPlayIcon(p) { $("icoPlay").toggleAttribute("hidden", p); $("icoPause
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
 $("playBtn").onclick = () => { unlockAudio(); try { audioCtx(); } catch {} if (!q) startQuiz(); else if (q.phase === "paused") resumeQuiz(); else pauseQuiz(); };
 function startQuiz() {
-  const words = wordsOf(week.id); if (!words.length) return;
+  const words = quizWords();
+  if (!words.length) { resetStage(); $("doneScore").textContent = "Inga svåra ord kvar!"; $("done").hidden = false; $("typed").hidden = true; return; }
   if (!kid) toast("Ingen är vald, så resultatet sparas inte. Lägg till ett barn på startsidan.");
   q = { words, queue: shuffle(words.slice()), firstWrong: new Set(), ok: new Set(), typed: "", phase: "typing", resume: null, timer: null };
   resetStage(); setPlayIcon(true); nextWord();
@@ -832,7 +887,7 @@ function resumeQuiz() { setPlayIcon(true); if (q.resume === "feedback") afterFee
 function stopQuiz() { if (q) clearTimeout(q.timer); stopAudio(); q = null; }
 function showPic(w) {
   const m = media[w.id];
-  if (m && m.image) $("qpic").innerHTML = `<img src="${m.image}" alt="">`;
+  if (m && imgTag(m.image)) $("qpic").innerHTML = imgTag(m.image);
   else if (w.emoji) $("qpic").textContent = w.emoji;
   else { $("qpic").hidden = true; return; }
   $("qpic").hidden = false;
@@ -872,7 +927,7 @@ async function afterFeedback() {
   if (q.queue.length) { setPlayIcon(true); nextWord(); return; }
   const n = q.words.length, ok = n - q.firstWrong.size;
   if (kid) {
-    const s = { id: uuid(), kid_id: kid, week_id: week.id, words: q.words.map(w => w.word), missed: [...q.firstWrong], ok, created_at: new Date().toISOString() };
+    const s = { id: uuid(), kid_id: kid, week_id: week.virtual ? null : week.id, words: q.words.map(w => w.word), missed: [...q.firstWrong], ok, created_at: new Date().toISOString() };
     S.sessions.push(s);
     api.upsert("sessions", sb ? (({ created_at, ...r }) => r)(s) : s).catch(() => toast("Kunde inte spara resultatet."));
   }
@@ -924,9 +979,11 @@ function renderStats() {
   const per = new Map();
   for (const s of ss) for (const w of s.words) { const k = s.week_id + "|" + w, r = per.get(k) || { w, week: s.week_id, asked: 0, wrong: 0 }; r.asked++; if (s.missed.includes(w)) r.wrong++; per.set(k, r); }
   const all = [...per.values()], asked = all.reduce((a, r) => a + r.asked, 0), wrong = all.reduce((a, r) => a + r.wrong, 0);
-  const hard = all.filter(r => r.wrong).sort((a, b) => b.wrong / b.asked - a.wrong / a.asked || b.wrong - a.wrong).slice(0, 25);
+  const hard = hardWords(statKid).slice(0, 25);
   const fmt = new Intl.DateTimeFormat("sv-SE", { day: "numeric", month: "short" });
   const weeks = S.weeks.map(w => ({ w, s: ss.filter(x => x.week_id === w.id) })).filter(x => x.s.length);
+  const hs = ss.filter(x => !x.week_id);
+  if (hs.length) weeks.unshift({ w: { name: "Svåraste ord" }, s: hs });
   body.innerHTML = `
     <div class="stats3">
       <div><b>${ss.length}</b><span>förhör</span></div>
@@ -934,7 +991,8 @@ function renderStats() {
       <div><b>${ss.length ? fmt.format(new Date(ss[ss.length - 1].created_at)) : "–"}</b><span>senast</span></div>
     </div>
     <div class="h2">Svårast just nu</div>
-    ${hard.length ? hard.map(r => `<div class="srow"><span class="w">${esc(r.w)}</span><span class="n">fel ${r.wrong} av ${r.asked}</span><span class="s">${esc(weekName(r.week))}</span><span class="bar2"><i style="width:${Math.round(100 * r.wrong / r.asked)}%"></i></span></div>`).join("")
+    <p class="sub" style="margin-bottom:6px">Fel minst en gång de senaste ${HARD.recent} gångerna. Ett ord försvinner när det blivit rätt ${HARD.inRow} gånger i rad.</p>
+    ${hard.length ? hard.map(r => `<div class="srow"><span class="w">${esc(r.word)}</span><span class="n">fel ${r.wrong} av senaste ${r.of}</span><span class="s">${r.weekId ? esc(weekName(r.weekId)) : "Svåraste ord"}</span><span class="bar2"><i style="width:${Math.round(100 * r.wrong / r.of)}%"></i></span></div>`).join("")
       : `<p class="sub">${ss.length ? "Inga fel ännu." : "Inga förhör ännu."}</p>`}
     <div class="h2">Per vecka</div>
     ${weeks.length ? weeks.map(({ w, s }) => { const l = s[s.length - 1], best = Math.max(...s.map(x => x.ok));
@@ -984,7 +1042,7 @@ function qrSvg(text) {
 
 /* ===================== read words from a photo ===================== */
 const OCR_SKIP = new Set(["veckans", "vecka", "ord", "v", "skapad", "av", "widgitonline", "widgitsymboler", "widgit", "software", "ltd", "com", "www", "namn", "datum", "läxa", "läxor", "glosor"]);
-function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = rej; document.head.append(s); }); }
+function loadScript(src, integrity) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; if (integrity) { s.integrity = integrity; s.crossOrigin = "anonymous"; } s.onload = res; s.onerror = rej; document.head.append(s); }); }
 async function imageToCanvas(file) {
   const url = URL.createObjectURL(file), img = new Image();
   try { await new Promise((r, j) => { img.onload = r; img.onerror = j; img.src = url; }); }
@@ -1019,7 +1077,7 @@ async function readSheet(file) {
   const say = (t, p) => { $("ocrText").textContent = t; if (p != null) $("ocrBar").style.width = Math.round(p * 100) + "%"; };
   say("Förbereder …", 0.02);
   try {
-    if (!window.Tesseract) { say("Hämtar textläsaren (första gången tar det en stund) …", 0.05); await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"); }
+    if (!window.Tesseract) { say("Hämtar textläsaren (första gången tar det en stund) …", 0.05); await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js", "sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F"); }
     const base = await imageToCanvas(file);
     const passes = [base, binarize(base, 130, 60), binarize(base, 110, 40)];
     let pass = 0;
